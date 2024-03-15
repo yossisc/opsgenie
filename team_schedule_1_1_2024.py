@@ -11,15 +11,18 @@ parser.add_argument('--apply', action='store_true')
 args = parser.parse_args()
 apply_run = args.apply
 
-# Initial setup
-# YYYY, M, D
-start_date = datetime(2024, 3, 17)  # Start date 7th January 2024
-end_date = datetime(2024, 4, 24)  # End date 29th February 2024
-team_members = ["Dovid", "Yossi", "Tom", "Moriah", "Adiel"]
+################################
+#    CHANGE HERE !!!
+start_date = datetime(2024, 3, 20 ) # yyyy, mo, day
+end_date = datetime(2024, 4, 5)  # yyyy, mo, day
+#
+################################
+
+first_workday_user = "Adiel"
+first_weekend_user = "Moriah"
+workday_rotation = ["Dovid", "Yossi", "Tom", "Moriah", "Adiel"]
 weekend_rotation = ["Tom", "Adiel", "Yossi", "Dovid", "Moriah"]
-weekend_rotation_when_dati = ["Tom", "Adiel", "Yossi", "Gur", "Shay"]
-first_user = "Adiel"
-first_weekend_user = "Tom"
+#weekend_rotation_when_dati = ["Tom", "Adiel", "Yossi", "Gur", "Shay"]
 
 # Helper function to add a day
 def add_day(current_date):
@@ -30,18 +33,29 @@ def format_time(time_str):
     return 'T' + time_obj.strftime('%H:%M') + 'Z'
 
 # Function to create non-overlapping schedule
-def create_non_overlapping_schedule(start_date, end_date, team_members, weekend_rotation):
-    current_date = start_date
+def create_non_overlapping_schedule(start_date, end_date, workday_rotation, weekend_rotation):
+    current_date = datetime(2024, 1, 1)
     weekday_rotation_index = 0
     weekend_rotation_index = 0
     schedule = []
     first_null_filled = False
 
-    while team_members[0] != first_user:
-        team_members = team_members[1:] + team_members[:1]
+    print(f"\nSchedule From: {start_date.strftime('%A, %d/%m/%Y')}")
+    print(f"         Until: {end_date.strftime('%A, %d/%m/%Y')}\n")
+
+    while workday_rotation[0] != first_workday_user:
+        workday_rotation = workday_rotation[1:] + workday_rotation[:1]
 
     while weekend_rotation[0] != first_weekend_user:
         weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
+
+    while current_date < start_date:
+        current_date = add_day(current_date)
+        if current_date.strftime("%A") != "Friday": # and current_date.strftime("%A") != "Saturday":
+            workday_rotation = workday_rotation[1:] + workday_rotation[:1]
+        if current_date.strftime("%A") == "Friday":
+            weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
+
 
     while current_date <= end_date:
         day_name = current_date.strftime("%A")
@@ -49,7 +63,7 @@ def create_non_overlapping_schedule(start_date, end_date, team_members, weekend_
         if day_name == "Friday":
             assigned_member = weekend_rotation[weekend_rotation_index % len(weekend_rotation)]
             weekend_rotation_index += 1
-            team_members = team_members[1:] + team_members[:1]
+            workday_rotation = workday_rotation[1:] + workday_rotation[:1]
       
             # if Thureday name = weekend name then replace Thureday name with Wednesday...
             Thursday_Name = schedule[-1][4]
@@ -75,8 +89,8 @@ def create_non_overlapping_schedule(start_date, end_date, team_members, weekend_
 
         # OTHER DAYS OF THE WEEK 
         else:
-            assigned_member = team_members[weekday_rotation_index % (len(team_members))]
-            # print(weekday_rotation_index % (len(team_members)-1))
+            assigned_member = workday_rotation[weekday_rotation_index % (len(workday_rotation))]
+            # print(weekday_rotation_index % (len(workday_rotation)-1))
             weekday_rotation_index += 1
             next_day = add_day(current_date)
             schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("8:00AM"), format_time("8:00AM"), assigned_member,"REGULAR"))
@@ -86,7 +100,7 @@ def create_non_overlapping_schedule(start_date, end_date, team_members, weekend_
     return schedule
 
 # Generate non-overlapping schedule
-non_overlapping_schedule = create_non_overlapping_schedule(start_date, end_date, team_members, weekend_rotation)
+non_overlapping_schedule = create_non_overlapping_schedule(start_date, end_date, workday_rotation, weekend_rotation)
 
 # NEXT....
 print("| Date From  | Date To    | Time From | Time To     | Team Member    |")
