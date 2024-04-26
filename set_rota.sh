@@ -15,6 +15,8 @@ case $1 in
   "Moriah") UserName='moriah.popovsky@glassboxdigital.com' ;;
   "Yaron") UserName='yaron@glassboxdigital.com' ;;
   "Adiel") UserName='adiel.levy@glassboxdigital.com' ;;
+  "Gour") UserName='gour.hadad@glassboxdigital.com' ;;
+  "Shay") UserName='shay.blanc@glassboxdigital.com' ;;
   *) UserName='NULL' ;;
 esac
 

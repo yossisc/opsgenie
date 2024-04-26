@@ -17,7 +17,7 @@ start_date = datetime(2024, 3, 17)  # Start date 7th January 2024
 end_date = datetime(2024, 4, 24)  # End date 29th February 2024
 team_members = ["Dovid", "Yossi", "Tom", "Moriah", "Adiel"]
 weekend_rotation = ["Tom", "Adiel", "Yossi", "Dovid", "Moriah"]
-weekend_rotation_when_dati = ["Tom", "Adiel", "Yossi", "Gur", "Shay"]
+weekend_rotation_when_dati = ["Tom", "Adiel", "Yossi", "Gour", "Shay"]
 first_user = "Adiel"
 first_weekend_user = "Tom"
 
