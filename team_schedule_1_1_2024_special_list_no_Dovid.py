@@ -15,21 +15,21 @@ apply_run = args.apply
 #    CHANGE HERE !!!
 # start_date = datetime(2024, 1, 1 ) # yyyy, mo, day
 # end_date = datetime(2024, 12, 1)  # yyyy, mo, day
-start_date = datetime(2024, 6, 30 ) # yyyy, mo, day
-end_date = datetime(2024, 7, 14)  # yyyy, mo, day
+start_date = datetime(2024, 8, 25 ) # yyyy, mo, day
+end_date = datetime(2024, 9, 15)  # yyyy, mo, day
 #
 ################################
 
-first_workday_user = "Adiel"
-first_weekend_user = "Yossi"
-workday_rotation = ["Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
-weekend_rotation = ["Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
-weekend_rotation_when_dati = ["Yossi", "Tom", "Adiel" ,"Gour" ,"Shay"]
-# first_workday_user = "Gour"
-# first_weekend_user = "Moriah"
-# workday_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
-# weekend_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
-# weekend_rotation_when_dati = ["Yossi", "Tom", "Gour" ,"Shay"]
+#first_workday_user = "Adiel"
+#first_weekend_user = "Yossi"
+#workday_rotation = ["Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
+#weekend_rotation = ["Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
+#weekend_rotation_when_dati = ["Yossi", "Tom", "Adiel" ,"Gour" ,"Shay"]
+first_workday_user = "Gour"
+first_weekend_user = "Tom"
+workday_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
+weekend_rotation = ["Tom", "Moriah", "Yossi", "Shay" ,"Gour"]
+weekend_rotation_when_dati = ["Yossi", "Gour", "Tom" ,"Shay"]
 holidays = [ "22/04/2024",
              "29/04/2024",
              "13/05/2024",
@@ -76,6 +76,8 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
 
         # WEEKEND Handler:
         if day_name == "Friday" or is_holiday(current_date, holidays):
+            if day_name == "Friday":
+                workday_rotation = workday_rotation[1:] + workday_rotation[:1]
             rotate_and_get_next_person(weekend_rotation)
             assigned_member = weekend_rotation[0]
             
@@ -128,8 +130,8 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
             if day_name in ("Monday","Tuesday","Wednesday","Thursday"):
 #                schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time(shift_end_time), assigned_member,"REGULAR",day_name))
                 shift_end_time="7:00PM"
-                schedule.append((current_date.strftime("%d/%m/%Y"), current_date.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time(shift_end_time), assigned_member,"REGULAR",day_name))
-                schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time(shift_end_time), format_time("7:00AM"), "Dovid", "REGULAR",day_name))
+                schedule.append((current_date.strftime("%d/%m/%Y"), current_date.strftime("%d/%m/%Y"), format_time("6:00AM"), format_time(shift_end_time), assigned_member,"REGULAR",day_name))
+                schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time(shift_end_time), format_time("6:00AM"), "Dovid", "REGULAR",day_name))
             else:
                 schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time(shift_end_time), assigned_member,"REGULAR",day_name))
 
