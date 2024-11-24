@@ -15,23 +15,24 @@ apply_run = args.apply
 #    CHANGE HERE !!!
 #start_date = datetime(2024, 1, 1 ) # yyyy, mo, day
 #end_date = datetime(2024, 5, 1)  # yyyy, mo, day
-start_date = datetime(2024, 6, 3 ) # yyyy, mo, day
-end_date = datetime(2024, 6, 10)  # yyyy, mo, day
+start_date = datetime(2024, 10, 13 ) # yyyy, mo, day
+end_date = datetime(2024, 11, 10)  # yyyy, mo, day
 #end_date = datetime(2024, 12, 1)  # yyyy, mo, day
 #
 ################################
 
-first_workday_user = "Adiel"
-first_weekend_user = "Dovid"
-workday_rotation = ["Dovid", "Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
-weekend_rotation = ["Dovid", "Yossi", "Tom", "Moriah", "Adiel" ,"Gour" ,"Shay"]
-weekend_rotation_when_dati = ["Yossi", "Tom", "Adiel" ,"Gour" ,"Shay"]
+first_workday_user = "Gour"
+first_weekend_user = "Gour"
+workday_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
+weekend_rotation = ["Yaron", "Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
+weekend_rotation_when_dati = ["Yossi", "Tom", "Yaron" ,"Gour" ,"Shay"]
 holidays = [ "22/04/2024",
              "29/04/2024",
              "13/05/2024",
              "11/06/2024",
              "02/10/2024",
              "16/10/2024"
+             "23/10/2024"
     ]
 
 # Helper function to add a day
