@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 GenieKey=$(cat ~/.config/ops_genie_api_key |xargs)
 ScheduleName='GB-INFRA-Schedule'
 RotationName='normal'
@@ -18,6 +18,7 @@ case $1 in
   "Gour") UserName='gour.hadad@glassboxdigital.com' ;;
   "Shay") UserName='shay.blanc@glassboxdigital.com' ;;
   "Nadav") UserName='nadav.kosovsky@glassboxdigital.com' ;;
+  "Gabi") UserName='gavriel.matatov@glassboxdigital.com' ;;
   *) UserName='NULL' ;;
 esac
 

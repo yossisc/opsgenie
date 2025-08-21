@@ -13,16 +13,17 @@ apply_run = args.apply
 
 ################################
 #    CHANGE HERE !!!
-start_date = datetime(2025, 3, 30 ) # yyyy, mo, day
-end_date = datetime(2025, 3, 31)  # yyyy, mo, day
+start_date = datetime(2025, 3, 31 ) # yyyy, mo, day
+end_date = datetime(2025, 4, 27)  # yyyy, mo, day
 #
 ################################
 
-first_workday_user = "Shay"
-first_weekend_user = "Gour"
-workday_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Shay"]
-weekend_rotation = ["Gour", "Shay", "Yossi", "Yaron", "Tom" ]
-weekend_rotation_when_dati = ["Shay", "Yossi", "Gour", "Yaron" ,"Tom"]
+first_workday_user = "Gour"
+first_weekend_user = "Yaron"
+# workday_rotation = ["Yossi", "Tom", "Moriah", "Gour" ,"Nadav"]
+workday_rotation = ["Tom", "Yossi", "Dovid", "Moriah", "Gour" ,"Nadav"]
+weekend_rotation = ["Gour", "Yossi", "Yaron", "Tom" ]
+weekend_rotation_when_dati = ["Yossi", "Gour", "Yaron" ,"Tom"]
 holidays = [ "13/04/2025",
              "01/05/2025",
              "02/06/2025",
@@ -125,8 +126,9 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
             weekday_rotation_index += 1
             next_day = add_day(current_date)
             shift_end_time="7:00AM"
-            if day_name in ("Monday","Tuesday","Wednesday","Thursday"):
+            # if day_name in ("Monday","Tuesday","Wednesday","Thursday"):
             #if day_name in ("Dovid in holiday"):
+            if day_name == "Dovid in IL":
                 shift_end_time="7:00PM"
                 schedule.append((current_date.strftime("%d/%m/%Y"), current_date.strftime("%d/%m/%Y"), format_time("6:00AM"), format_time(shift_end_time), assigned_member,"REGULAR",day_name))
                 schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time(shift_end_time), format_time("7:00AM"), "Dovid", "REGULAR",day_name))
@@ -171,7 +173,7 @@ if apply_run:
                 if member != 'NULL':
                     full_date_from = date_from_formatted + time_from
                     full_date_to = date_to_formatted + time_to
-                    os.chdir('/home/yossi/opsgenie')
+                    os.chdir('/Users/yossi/myscripts/opsgenie')
                     print("Applying: "+ member +' '+ full_date_from +' '+ full_date_to)
                     subprocess.run(["./set_rota.sh", member, full_date_from, full_date_to])
                     print('.')
