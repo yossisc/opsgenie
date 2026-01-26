@@ -14,8 +14,8 @@ apply_run = args.apply
 
 ################################
 #    CHANGE HERE !!!
-start_date = datetime(2025, 11, 30 ) # yyyy, mo, day
-end_date = datetime(2025, 12, 31)  # yyyy, mo, day
+start_date = datetime(2025, 12, 31 ) # yyyy, mo, day
+end_date = datetime(2026, 1, 31)  # yyyy, mo, day
 #
 ################################
 
@@ -77,8 +77,8 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
         weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
 
     # Main loop...
-    current_date = datetime(2025, 1, 1)
-    while current_date <= datetime(2025, 12, 31):
+    current_date = datetime(2026, 1, 1)
+    while current_date <= datetime(2026, 12, 31):
         day_name = current_date.strftime("%A")
         # if start_date < current_date < end_date:
         #     print(f" {schedule[-1]} ")

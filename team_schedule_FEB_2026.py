@@ -14,24 +14,24 @@ apply_run = args.apply
 
 ################################
 #    CHANGE HERE !!!
-start_date = datetime(2025, 11, 30 ) # yyyy, mo, day
-end_date = datetime(2025, 12, 31)  # yyyy, mo, day
+start_date = datetime(2026, 1, 31 ) # yyyy, mo, day
+end_date = datetime(2026, 2, 28)  # yyyy, mo, day
 #
 ################################
 
 first_workday_user = "Gour"
 first_weekend_user = "Gabi"
 workday_rotation = ["Yossi", "Nadav", "Gabi", "Gour"]
-weekend_rotation = ["Yaron", "Yossi", "Gabi", "Gour"]
-weekend_rotation_when_dati = ["Yossi", "Gour", "Yaron" , "Gabi"]
-holidays = [ "13/04/2025",
-             "01/05/2025",
-             "02/06/2025",
-             "23/09/2025",
-             "24/09/2025",
-             "02/10/2025",
-             "07/10/2025",
-             "14/10/2025"
+weekend_rotation = ["Extra1", "Extra2", "Yossi", "Gabi", "Gour"]
+weekend_rotation_when_dati = ["Extra1", "Extra2", "Yossi", "Gour", "Gabi"]
+holidays = [ "01/04/2026",  # Passover 1st day
+             "07/04/2026",  # Passover 7th day
+             "21/05/2026",  # Shavuot
+             "11/09/2026",  # Rosh Hashanah 1
+             "12/09/2026",  # Rosh Hashanah 2
+             "20/09/2026",  # Yom Kippur
+             "25/09/2026",  # Sukkot 1st day
+             "02/10/2026"   # Simchat Torah
     ]
 
 
@@ -77,8 +77,8 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
         weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
 
     # Main loop...
-    current_date = datetime(2025, 1, 1)
-    while current_date <= datetime(2025, 12, 31):
+    current_date = datetime(2026, 1, 1)
+    while current_date <= datetime(2026, 12, 31):
         day_name = current_date.strftime("%A")
         # if start_date < current_date < end_date:
         #     print(f" {schedule[-1]} ")
@@ -201,6 +201,11 @@ if apply_run:
             if datetime.strptime(date_from, "%d/%m/%Y") >= start_date and datetime.strptime(date_to, "%d/%m/%Y") <= end_date:
                 date_from_formatted = datetime.strptime(date_from, "%d/%m/%Y").strftime("%Y-%m-%d")
                 date_to_formatted = datetime.strptime(date_to, "%d/%m/%Y").strftime("%Y-%m-%d")
+                # Replace Extra1 with Gabi and Extra2 with Gour when applying
+                if member == 'Extra1':
+                    member = 'Gabi'
+                elif member == 'Extra2':
+                    member = 'Gour'
                 if member != 'NULL':
                     full_date_from = date_from_formatted + time_from
                     full_date_to = date_to_formatted + time_to
