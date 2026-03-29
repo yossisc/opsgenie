@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from datetime import datetime, timedelta
+import sys, os
+import subprocess
+import argparse
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--apply', action='store_true')
+args = parser.parse_args()
+apply_run = args.apply
+
+################################
+#    CHANGE HERE !!!
+start_date = datetime(2026, 4, 1 ) # yyyy, mo, day
+end_date = datetime(2026, 4, 20)  # yyyy, mo, day
+#
+################################
+
+first_workday_user = "Gour"
+first_weekend_user = "Gabi"
+workday_rotation = ["Yossi", "Gabi", "Gour", "Dovid"]
+weekend_rotation = ["Extra1", "Extra2", "Yossi", "Gabi", "Gour"]
+weekend_rotation_when_dati = ["Extra1", "Extra2", "Yossi", "Gour", "Gabi"]
+holidays = [ "01/04/2026",  # Passover 1st day
+             "07/04/2026",  # Passover 7th day
+             "21/05/2026",  # Shavuot
+             "11/09/2026",  # Rosh Hashanah 1
+             "12/09/2026",  # Rosh Hashanah 2
+             "20/09/2026",  # Yom Kippur
+             "25/09/2026",  # Sukkot 1st day
+             "02/10/2026"   # Simchat Torah
+    ]
+
+# Nadav is on vacation Apr 1–10; his shifts (Apr 5 Sun, Apr 6 Mon) are covered by Yossi
+nadav_vacation_end = datetime(2026, 4, 11)
+nadav_vacation_replacement = "Yossi"
+
+
+# Helper function to add a day
+def add_day(current_date):
+    return current_date + timedelta(days=1)
+
+def format_time(time_str):
+    time_obj = datetime.strptime(time_str, '%I:%M%p') - timedelta(hours=2)
+    return 'T' + time_obj.strftime('%H:%M') + 'Z'
+
+def rotate_and_get_next_person(people_list):
+    people_list.append(people_list.pop(0))
+    return people_list[-1]
+
+def is_holiday(current_date, holidays):
+    date_str = current_date.strftime("%d/%m/%Y")
+    return date_str in holidays
+
+# Function to create non-overlapping schedule
+def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
+    weekday_rotation_index = 0
+    weekend_rotation_index = 0
+    schedule = []
+    first_null_filled = False
+    
+    # Weekly pattern variables  
+    # Each week: [person_for_sun_mon, person_for_tue_thu]
+    # Adjusted to match user's exact specification starting Aug 31
+    weekly_pairs = [
+        ["Yossi", "Gabi"],   # Week 1: Yossi (2 days), Gabi (3 days)
+        ["Gour", "Nadav"],     # Week 2: Gour (2 days), Nadav (3 days)  
+        ["Gabi", "Yossi"],   # Week 3: Gabi (2 days), Yossi (3 days)
+        ["Nadav", "Gour"]      # Week 4: Nadav (2 days), Gour (3 days)
+    ]
+    # Start at the right index to get Yossi+Gabi for first week  
+    week_counter = 2  # Offset to align with desired pattern
+
+    # April+: 5-person rotation including Dovid, full 24h workday shifts (no split overnight)
+    # Each person gets exactly 5 workdays per 5-week cycle (2 sun-mon + 3 tue-thu).
+    weekly_pairs_v2 = [
+        ["Yossi", "Gabi"],    # Week A: Yossi×2, Gabi×3
+        ["Gour",  "Nadav"],   # Week B: Gour×2, Nadav×3
+        ["Dovid", "Gour"],    # Week C: Dovid×2, Gour×3  (Gour avoids Yossi-weekend clash Apr 24)
+        ["Gabi",  "Yossi"],   # Week D: Gabi×2, Yossi×3
+        ["Nadav", "Dovid"],   # Week E: Nadav×2, Dovid×3
+    ]
+    week_counter_v2 = 0
+    april_start = datetime(2026, 4, 1)
+
+    while workday_rotation[0] != first_workday_user:
+        workday_rotation = workday_rotation[1:] + workday_rotation[:1]
+
+    while weekend_rotation[0] != first_weekend_user:
+        weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
+
+    # Main loop...
+    current_date = datetime(2026, 1, 1)
+    while current_date <= datetime(2026, 12, 31):
+        day_name = current_date.strftime("%A")
+        # if start_date < current_date < end_date:
+        #     print(f" {schedule[-1]} ")
+
+        # WEEKEND Handler:
+        if is_holiday(current_date, holidays):
+            print(f"Holi {current_date.strftime('%d/%m/%Y')}")
+        if day_name == "Friday" or is_holiday(current_date, holidays):
+            if day_name == "Friday":
+                workday_rotation = workday_rotation[1:] + workday_rotation[:1]
+            rotate_and_get_next_person(weekend_rotation)
+            assigned_member = weekend_rotation[0]
+            
+            # if Thureday name = weekend name then replace Thureday name with Wednesday...
+            Thursday_Name = schedule[-1][4]
+            if day_name == "Friday" and Thursday_Name == assigned_member:
+                if schedule[-2][5] != "WEEKEND":
+                    last_item = list(schedule[-1])
+                    second_last_item = list(schedule[-2])
+                    Wednesday_Name = second_last_item[4]
+                    last_item[4] = Wednesday_Name
+                    second_last_item[4] = Thursday_Name
+                    schedule[-1] = tuple(last_item)
+                    schedule[-2] = tuple(second_last_item)
+
+########################################################################################    
+            if assigned_member in ("Moriah", "Dovid", "Nadav"):
+                # Fri 8am - 2pm
+                schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(hours=6)).strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("2:00PM"), assigned_member,"WEEKEND","Friday"))
+                # Fri 2pm - Sat 8pm
+                # select the Shabat goy_shel_shabat when Dati
+                goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
+                # if goy_shel_shabat == weekend_rotation[1]:
+                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
+                # #     rotate_and_get_next_person(weekend_rotation)
+                # if goy_shel_shabat == weekend_rotation[-1]:
+                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
+                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
+                # if goy_shel_shabat == weekend_rotation[1]:
+                #     rotate_and_get_next_person(weekend_rotation)
+                #     while weekend_rotation[0] != "Moriah" and weekend_rotation[0] !=  "Dovid": 
+                #         rotate_and_get_next_person(weekend_rotation)
+                schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(days=1)).strftime("%d/%m/%Y"), format_time("2:00PM"), format_time("7:00PM"), goy_shel_shabat,"WEEKEND","Saturday"))
+                #
+                # Sat 8pm - Sun 8am
+                schedule.append(((current_date + timedelta(days=1, hours=12)).strftime("%d/%m/%Y"), (current_date + timedelta(days=2)).strftime("%d/%m/%Y"), format_time("7:00PM"), format_time("7:00AM"), assigned_member, "WEEKEND","Friday"))
+            else:
+                schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(days=2)).strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("7:00AM"), assigned_member+"","WEEKEND","Saturday"))
+########################################################################################    
+    
+            current_date = add_day(add_day(current_date))  # Skip to Sunday
+    
+        # OTHER DAYS OF THE WEEK 
+        else:
+            next_day = add_day(current_date)
+
+            if current_date >= april_start:
+                # ── April+ ──────────────────────────────────────────────────────────
+                # 5-person rotation (Dovid included). Every workday = full 24h shift.
+                current_pair = weekly_pairs_v2[week_counter_v2 % len(weekly_pairs_v2)]
+                if day_name in ("Sunday", "Monday"):
+                    assigned_member = current_pair[0]
+                elif day_name in ("Tuesday", "Wednesday", "Thursday"):
+                    assigned_member = current_pair[1]
+                    if day_name == "Thursday":
+                        week_counter_v2 += 1
+                else:
+                    assigned_member = workday_rotation[weekday_rotation_index % len(workday_rotation)]
+                    weekday_rotation_index += 1
+                # Full 24h shift for all workdays (7am → 7am next day)
+                schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("7:00AM"), assigned_member, "REGULAR", day_name))
+
+            else:
+                # ── Pre-April ────────────────────────────────────────────────────────
+                # 4-person rotation; Mon-Thu split into daytime + Dovid overnight
+                current_pair = weekly_pairs[week_counter % len(weekly_pairs)]
+                if day_name == "Sunday":
+                    assigned_member = current_pair[0]
+                elif day_name == "Monday":
+                    assigned_member = current_pair[0]
+                elif day_name in ("Tuesday", "Wednesday", "Thursday"):
+                    assigned_member = current_pair[1]
+                    if day_name == "Thursday":
+                        week_counter += 1
+                else:
+                    assigned_member = workday_rotation[weekday_rotation_index % len(workday_rotation)]
+                    weekday_rotation_index += 1
+                if day_name in ("Monday", "Tuesday", "Wednesday", "Thursday"):
+                    schedule.append((current_date.strftime("%d/%m/%Y"), current_date.strftime("%d/%m/%Y"), format_time("6:00AM"), format_time("7:00PM"), assigned_member, "REGULAR", day_name))
+                    schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00PM"), format_time("7:00AM"), "Dovid", "REGULAR", day_name))
+                else:
+                    schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("7:00AM"), assigned_member, "REGULAR", day_name))
+
+            current_date = next_day   
+    return schedule
+
+
+#################################  MAIN  #################################
+print(f"\nSchedule From: {start_date.strftime('%A, %d/%m/%Y')}")
+print(f"         Until: {end_date.strftime('%A, %d/%m/%Y')}\n")
+
+# Generate non-overlapping schedule
+non_overlapping_schedule = create_non_overlapping_schedule(workday_rotation, weekend_rotation)
+
+# NEXT....
+print("| Date From  | Date To    | Time From | Time To     | Team Member |    day   |")
+print("|------------|------------|-----------|-------------|-------------|----------|")
+for entry in non_overlapping_schedule:
+    date_from, date_to, time_from, time_to, member, we_or_reg, day_name = entry
+    date_from_dt = datetime.strptime(date_from, "%d/%m/%Y")
+    if date_from_dt >= start_date and date_from_dt <= end_date:
+        date_from_formatted = date_from_dt.strftime("%Y-%m-%d")
+        date_to_formatted = datetime.strptime(date_to, "%d/%m/%Y").strftime("%Y-%m-%d")
+        # Safety: replace Nadav if still on vacation (shouldn't trigger with new rotation)
+        if member == 'Nadav' and date_from_dt < nadav_vacation_end:
+            member = nadav_vacation_replacement
+        if we_or_reg == "WEEKEND":
+            print("\033[38;5;214m", end="")
+        else: 
+            print("\033[1;91m", end="")
+        print(f" {date_from_formatted:<12} {date_to_formatted:<12} {time_from:<12} {time_to:<12} {member:<12} {day_name:<12}")
+        #print(f"{we_or_reg:<12} {member}")    
+
+count = 0
+
+if apply_run:
+    input_value = input("Do you want to apply the above schedule? (y/n) ")
+    check = input_value.lower() in ['y', 'yes']
+    if check:
+        for entry in non_overlapping_schedule:
+            date_from, date_to, time_from, time_to, member, we_or_reg, day_name = entry
+            date_from_dt = datetime.strptime(date_from, "%d/%m/%Y")
+            if date_from_dt >= start_date and date_from_dt <= end_date:
+                date_from_formatted = date_from_dt.strftime("%Y-%m-%d")
+                date_to_formatted = datetime.strptime(date_to, "%d/%m/%Y").strftime("%Y-%m-%d")
+                # Replace Extra1 with Gabi and Extra2 with Gour when applying
+                if member == 'Extra1':
+                    member = 'Gabi'
+                elif member == 'Extra2':
+                    member = 'Gour'
+                # Safety: replace Nadav if still on vacation (shouldn't trigger with new rotation)
+                if member == 'Nadav' and date_from_dt < nadav_vacation_end:
+                    member = nadav_vacation_replacement
+                if member != 'NULL':
+                    full_date_from = date_from_formatted + time_from
+                    full_date_to = date_to_formatted + time_to
+                    os.chdir('/Users/yossi/opsgenie')
+                    print("Applying: "+ member +' '+ full_date_from +' '+ full_date_to)
+                    subprocess.run(["./set_rota.sh", member, full_date_from, full_date_to])
+                    time.sleep(1)
+                    print('.')
+
+                    # NEW: throttle every 10 calls
+                    count += 1
+                    if count % 10 == 0:
+                        print("⏸ Taking a 30s break to avoid rate limits…")
+                        # optional live countdown
+                        for s in range(30, 0, -1):
+                            print(f"   Resuming in {s:02d}s", end='\r', flush=True)
+                            time.sleep(1)
+                        print(" " * 30, end='\r')  # clear line
+                        print("▶️ Resuming")
+
