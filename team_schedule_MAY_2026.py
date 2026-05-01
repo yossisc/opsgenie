@@ -18,11 +18,11 @@ apply_run = args.apply
 ################################
 #    CHANGE HERE !!!
 start_date = datetime(2026, 5, 1)   # yyyy, mo, day
-end_date = datetime(2026, 5, 31)    # yyyy, mo, day
+end_date   = datetime(2026, 5, 31)  # yyyy, mo, day
 #
 ################################
 
-first_workday_user = "Gour"
+first_workday_user = "Gabi"
 first_weekend_user = "Gabi"
 workday_rotation = ["Yossi", "Nadav", "Gabi", "Gour"]
 weekend_rotation = ["Extra1", "Extra2", "Yossi", "Gabi", "Gour"]
@@ -37,6 +37,39 @@ holidays = [ "01/04/2026",  # Passover 1st day
              "25/09/2026",  # Sukkot 1st day
              "02/10/2026"   # Simchat Torah
     ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WORKDAY (Sun–Thu) ROTATION — date-anchored, 4-week repeating cycle.
+#
+# Each week pair is [person_for_Sun_Mon (2 days), person_for_Tue_Wed_Thu (3 days)]
+#
+#   Week 1: Gabi (Sun,Mon)  +  Yossi (Tue,Wed,Thu)
+#   Week 2: Gour (Sun,Mon)  +  Nadav (Tue,Wed,Thu)
+#   Week 3: Yossi (Sun,Mon) +  Gabi  (Tue,Wed,Thu)   ← swap of week 1
+#   Week 4: Nadav (Sun,Mon) +  Gour  (Tue,Wed,Thu)   ← swap of week 2
+#   …repeats every 4 weeks indefinitely.
+#
+# ANCHOR:  Sunday 03/05/2026 is Week 1.
+# This anchor is permanent — do NOT change it for future months. Just update
+# start_date / end_date above and the same rotation will continue correctly.
+# ─────────────────────────────────────────────────────────────────────────────
+WEEKLY_PAIRS = [
+    ["Gabi",  "Yossi"],   # Week 1
+    ["Gour",  "Nadav"],   # Week 2
+    ["Yossi", "Gabi" ],   # Week 3 (swap of week 1)
+    ["Nadav", "Gour" ],   # Week 4 (swap of week 2)
+]
+ANCHOR_SUNDAY = datetime(2026, 5, 3)   # Week 1 anchor — keep permanent
+
+def get_week_pair(current_date):
+    """Return [sun_mon_person, tue_wed_thu_person] for the work-week
+    containing current_date, using the 4-week date-anchored cycle."""
+    # Python weekday(): Mon=0 … Sun=6.  We want Sun=0 … Sat=6.
+    days_since_sunday = (current_date.weekday() + 1) % 7
+    week_sunday = current_date - timedelta(days=days_since_sunday)
+    weeks_since_anchor = (week_sunday - ANCHOR_SUNDAY).days // 7
+    return WEEKLY_PAIRS[weeks_since_anchor % len(WEEKLY_PAIRS)]
+
 
 # All assignable team members (used for cycling in interactive edit)
 all_team_members = ["Yossi", "Gabi", "Gour", "Nadav", "Dovid"]
@@ -139,21 +172,7 @@ def interactive_edit(entries, team_members):
 # Function to create non-overlapping schedule
 def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
     weekday_rotation_index = 0
-    weekend_rotation_index = 0
     schedule = []
-    first_null_filled = False
-    
-    # Weekly pattern variables  
-    # Each week: [person_for_sun_mon, person_for_tue_thu]
-    # Adjusted to match user's exact specification starting Aug 31
-    weekly_pairs = [
-        ["Yossi", "Gabi"],   # Week 1: Yossi (2 days), Gabi (3 days)
-        ["Gour", "Nadav"],     # Week 2: Gour (2 days), Nadav (3 days)  
-        ["Gabi", "Yossi"],   # Week 3: Gabi (2 days), Yossi (3 days)
-        ["Nadav", "Gour"]      # Week 4: Nadav (2 days), Gour (3 days)
-    ]
-    # Start at the right index to get Yossi+Gabi for first week  
-    week_counter = 2  # Offset to align with desired pattern
 
     while workday_rotation[0] != first_workday_user:
         workday_rotation = workday_rotation[1:] + workday_rotation[:1]
@@ -161,12 +180,12 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
     while weekend_rotation[0] != first_weekend_user:
         weekend_rotation = weekend_rotation[1:] + weekend_rotation[:1]
 
-    # Main loop...
+    # Main loop — generate the whole year so weekend rotation stays stable.
     current_date = datetime(2026, 1, 1)
     while current_date <= datetime(2026, 12, 31):
         day_name = current_date.strftime("%A")
 
-        # WEEKEND Handler:
+        # ── WEEKEND / HOLIDAY handler (UNCHANGED — keep as is) ──
         if is_holiday(current_date, holidays):
             print(f"Holi {current_date.strftime('%d/%m/%Y')}")
         if day_name == "Friday" or is_holiday(current_date, holidays):
@@ -174,8 +193,8 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
                 workday_rotation = workday_rotation[1:] + workday_rotation[:1]
             rotate_and_get_next_person(weekend_rotation)
             assigned_member = weekend_rotation[0]
-            
-            # if Thureday name = weekend name then replace Thureday name with Wednesday...
+
+            # if Thursday name = weekend name then swap Thursday with Wednesday
             Thursday_Name = schedule[-1][4]
             if day_name == "Friday" and Thursday_Name == assigned_member:
                 if schedule[-2][5] != "WEEKEND":
@@ -187,48 +206,44 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
                     schedule[-1] = tuple(last_item)
                     schedule[-2] = tuple(second_last_item)
 
-########################################################################################    
+########################################################################################
             if assigned_member in ("Moriah", "Dovid", "Nadav"):
                 # Fri 8am - 2pm
                 schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(hours=6)).strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("2:00PM"), assigned_member,"WEEKEND","Friday"))
-                # Fri 2pm - Sat 8pm
-                # select the Shabat goy_shel_shabat when Dati
+                # Fri 2pm - Sat 8pm — pick the goy_shel_shabat when assigned is Dati
                 goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
                 schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(days=1)).strftime("%d/%m/%Y"), format_time("2:00PM"), format_time("7:00PM"), goy_shel_shabat,"WEEKEND","Saturday"))
-                #
                 # Sat 8pm - Sun 8am
                 schedule.append(((current_date + timedelta(days=1, hours=12)).strftime("%d/%m/%Y"), (current_date + timedelta(days=2)).strftime("%d/%m/%Y"), format_time("7:00PM"), format_time("7:00AM"), assigned_member, "WEEKEND","Friday"))
             else:
                 schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(days=2)).strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("7:00AM"), assigned_member+"","WEEKEND","Saturday"))
-########################################################################################    
-    
+########################################################################################
+
             current_date = add_day(add_day(current_date))
             if current_date.strftime("%A") == "Saturday":  # Holiday on Thursday skips to Sat; push to Sun
                 current_date = add_day(current_date)
-    
-        # OTHER DAYS OF THE WEEK 
+
+        # ── REGULAR WORKDAY handler (Sun–Thu) — NEW date-anchored rotation ──
         else:
             next_day = add_day(current_date)
 
-            current_pair = weekly_pairs[week_counter % len(weekly_pairs)]
-            if day_name == "Sunday":
-                assigned_member = current_pair[0]
-            elif day_name == "Monday":
+            current_pair = get_week_pair(current_date)
+            if day_name in ("Sunday", "Monday"):
                 assigned_member = current_pair[0]
             elif day_name in ("Tuesday", "Wednesday", "Thursday"):
                 assigned_member = current_pair[1]
-                if day_name == "Thursday":
-                    week_counter += 1
             else:
+                # Fallback (should not normally hit — Saturday is consumed by weekend block)
                 assigned_member = workday_rotation[weekday_rotation_index % len(workday_rotation)]
                 weekday_rotation_index += 1
+
             if day_name in ("Monday", "Tuesday", "Wednesday", "Thursday"):
                 schedule.append((current_date.strftime("%d/%m/%Y"), current_date.strftime("%d/%m/%Y"), format_time("6:00AM"), format_time("7:00PM"), assigned_member, "REGULAR", day_name))
                 schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00PM"), format_time("7:00AM"), "Dovid", "REGULAR", day_name))
             else:
                 schedule.append((current_date.strftime("%d/%m/%Y"), next_day.strftime("%d/%m/%Y"), format_time("7:00AM"), format_time("7:00AM"), assigned_member, "REGULAR", day_name))
 
-            current_date = next_day   
+            current_date = next_day
     return schedule
 
 
@@ -250,7 +265,7 @@ for entry in non_overlapping_schedule:
         date_to_formatted = datetime.strptime(date_to, "%d/%m/%Y").strftime("%Y-%m-%d")
         if we_or_reg == "WEEKEND":
             print("\033[38;5;214m", end="")
-        else: 
+        else:
             print("\033[1;91m", end="")
         print(f" {date_from_formatted:<12} {date_to_formatted:<12} {time_from:<12} {time_to:<12} {member:<12} {day_name:<12}")
 

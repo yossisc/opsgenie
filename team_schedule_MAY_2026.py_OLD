@@ -17,19 +17,19 @@ apply_run = args.apply
 
 ################################
 #    CHANGE HERE !!!
-start_date = datetime(2026, 4, 20 ) # yyyy, mo, day
-end_date = datetime(2026, 4, 30)  # yyyy, mo, day
+start_date = datetime(2026, 5, 1)   # yyyy, mo, day
+end_date = datetime(2026, 5, 31)    # yyyy, mo, day
 #
 ################################
 
-first_workday_user = "Gour"
+first_workday_user = "Gabi"
 first_weekend_user = "Gabi"
 workday_rotation = ["Yossi", "Nadav", "Gabi", "Gour"]
 weekend_rotation = ["Extra1", "Extra2", "Yossi", "Gabi", "Gour"]
 weekend_rotation_when_dati = ["Extra1", "Extra2", "Yossi", "Gour", "Gabi"]
 holidays = [ "01/04/2026",  # Passover 1st day
              "07/04/2026",  # Passover 7th day
-             "21/04/2026",  # Indipendence
+             "21/04/2026",  # Independence
              "21/05/2026",  # Shavuot
              "11/09/2026",  # Rosh Hashanah 1
              "12/09/2026",  # Rosh Hashanah 2
@@ -37,10 +37,6 @@ holidays = [ "01/04/2026",  # Passover 1st day
              "25/09/2026",  # Sukkot 1st day
              "02/10/2026"   # Simchat Torah
     ]
-
-# Nadav is on vacation Apr 1–10; his shifts (Apr 5 Sun, Apr 6 Mon) are covered by Yossi
-nadav_vacation_end = datetime(2026, 4, 11)
-nadav_vacation_replacement = "Yossi"
 
 # All assignable team members (used for cycling in interactive edit)
 all_team_members = ["Yossi", "Gabi", "Gour", "Nadav", "Dovid"]
@@ -169,8 +165,6 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
     current_date = datetime(2026, 1, 1)
     while current_date <= datetime(2026, 12, 31):
         day_name = current_date.strftime("%A")
-        # if start_date < current_date < end_date:
-        #     print(f" {schedule[-1]} ")
 
         # WEEKEND Handler:
         if is_holiday(current_date, holidays):
@@ -200,16 +194,6 @@ def create_non_overlapping_schedule(workday_rotation, weekend_rotation):
                 # Fri 2pm - Sat 8pm
                 # select the Shabat goy_shel_shabat when Dati
                 goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
-                # if goy_shel_shabat == weekend_rotation[1]:
-                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
-                # #     rotate_and_get_next_person(weekend_rotation)
-                # if goy_shel_shabat == weekend_rotation[-1]:
-                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
-                #     goy_shel_shabat = rotate_and_get_next_person(weekend_rotation_when_dati)
-                # if goy_shel_shabat == weekend_rotation[1]:
-                #     rotate_and_get_next_person(weekend_rotation)
-                #     while weekend_rotation[0] != "Moriah" and weekend_rotation[0] !=  "Dovid": 
-                #         rotate_and_get_next_person(weekend_rotation)
                 schedule.append((current_date.strftime("%d/%m/%Y"), (current_date + timedelta(days=1)).strftime("%d/%m/%Y"), format_time("2:00PM"), format_time("7:00PM"), goy_shel_shabat,"WEEKEND","Saturday"))
                 #
                 # Sat 8pm - Sun 8am
@@ -264,15 +248,11 @@ for entry in non_overlapping_schedule:
     if date_from_dt >= start_date and date_from_dt <= end_date:
         date_from_formatted = date_from_dt.strftime("%Y-%m-%d")
         date_to_formatted = datetime.strptime(date_to, "%d/%m/%Y").strftime("%Y-%m-%d")
-        # Safety: replace Nadav if still on vacation (shouldn't trigger with new rotation)
-        if member == 'Nadav' and date_from_dt < nadav_vacation_end:
-            member = nadav_vacation_replacement
         if we_or_reg == "WEEKEND":
             print("\033[38;5;214m", end="")
         else: 
             print("\033[1;91m", end="")
         print(f" {date_from_formatted:<12} {date_to_formatted:<12} {time_from:<12} {time_to:<12} {member:<12} {day_name:<12}")
-        #print(f"{we_or_reg:<12} {member}")    
 
 count = 0
 
@@ -285,8 +265,6 @@ if apply_run:
         if date_from_dt >= start_date and date_from_dt <= end_date:
             if member == 'Extra1':   member = 'Gabi'
             elif member == 'Extra2': member = 'Gour'
-            if member == 'Nadav' and date_from_dt < nadav_vacation_end:
-                member = nadav_vacation_replacement
             apply_entries.append((date_from, date_to, time_from, time_to, member, we_or_reg, day_name))
 
     def print_apply_table(entries):
@@ -339,4 +317,3 @@ if apply_run:
         elif answer in ('n', 'no'):
             print("Cancelled.")
             break
-
