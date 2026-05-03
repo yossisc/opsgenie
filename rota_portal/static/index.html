@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Opsgenie Rota Portal</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Opsgenie Rota Portal</h1>
+        <p id="subtitle">GB-INFRA-Schedule</p>
+      </div>
+      <div class="toolbar">
+        <button id="prevMonth" title="Previous month">Prev</button>
+        <input id="monthPicker" type="month">
+        <button id="nextMonth" title="Next month">Next</button>
+        <button id="refresh">Refresh</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="actions">
+        <div class="status" id="status">Loading schedule...</div>
+        <div class="bulk-actions">
+          <label class="bulk-toggle">
+            <input id="bulkMode" type="checkbox">
+            Multiple shifts override
+          </label>
+          <button id="openBulkOverride" class="primary" type="button" disabled>Override Selected</button>
+        </div>
+      </section>
+
+      <section class="calendar-wrap">
+        <div class="weekday">Sun</div>
+        <div class="weekday">Mon</div>
+        <div class="weekday">Tue</div>
+        <div class="weekday">Wed</div>
+        <div class="weekday">Thu</div>
+        <div class="weekday">Fri</div>
+        <div class="weekday">Sat</div>
+        <div id="calendar" class="calendar"></div>
+      </section>
+    </main>
+
+    <dialog id="shiftDialog">
+      <form method="dialog" id="overrideForm">
+        <div class="dialog-head">
+          <h2 id="dialogTitle">Override shift</h2>
+          <button type="button" value="cancel" class="icon" data-close-override title="Close">x</button>
+        </div>
+        <div id="shiftSummary" class="summary"></div>
+        <label>
+          New owner
+          <select id="memberSelect"></select>
+        </label>
+        <div class="mode-row">
+          <label><input type="radio" name="mode" value="full" checked> Full shift</label>
+          <label><input type="radio" name="mode" value="partial"> Partial hours</label>
+        </div>
+        <div id="partialFields" class="partial">
+          <label>
+            From
+            <input id="startInput" type="datetime-local">
+          </label>
+          <label>
+            To
+            <input id="endInput" type="datetime-local">
+          </label>
+        </div>
+        <menu>
+          <button type="button" value="cancel" data-close-override>Cancel</button>
+          <button id="submitOverride" value="default" class="primary">Override</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -4,6 +4,12 @@
         "titleBar.activeBackground": "#a99d1c",
         "titleBar.activeForeground": "#000000",
         "titleBar.inactiveBackground": "#073608",
-        "titleBar.inactiveForeground": "#F0FDF0"
+        "titleBar.inactiveForeground": "#F0FDF0",
+        "statusBar.background": "#514B0D",
+        "statusBar.foreground": "#FCFBEE",
+        "statusBar.debuggingBackground": "#514B0D",
+        "statusBar.debuggingForeground": "#FCFBEE",
+        "statusBar.noFolderBackground": "#514B0D",
+        "statusBar.noFolderForeground": "#FCFBEE"
     }
 }
