@@ -5,4 +5,5 @@ local.properties
 gradle.properties
 captures/
 *.iml
+.kotlin/
 
