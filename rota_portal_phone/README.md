@@ -44,6 +44,6 @@ OPS_API_BASE=https://api.eu.opsgenie.com
 
 Android Studio:
 
-- Open `/Users/yossi/opsgenie/rota_portal_phone`.
+- Open `/Users/yossi/Projects/opsgenie/rota_portal_phone`.
 - Build the `rota_portal_android:app` module.
 - The debug APK output is `rota_portal_android/app/build/outputs/apk/debug/app-debug.apk`.

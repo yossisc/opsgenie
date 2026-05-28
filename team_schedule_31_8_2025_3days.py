@@ -203,7 +203,7 @@ if apply_run:
                 if member != 'NULL':
                     full_date_from = date_from_formatted + time_from
                     full_date_to = date_to_formatted + time_to
-                    os.chdir('/Users/yossi/opsgenie')
+                    os.chdir('/Users/yossi/Projects/opsgenie')
                     print("Applying: "+ member +' '+ full_date_from +' '+ full_date_to)
                     subprocess.run(["./set_rota.sh", member, full_date_from, full_date_to])
                     time.sleep(1)

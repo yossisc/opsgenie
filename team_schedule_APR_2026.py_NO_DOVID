@@ -318,7 +318,7 @@ if apply_run:
                 dtmt = datetime.strptime(date_to,   "%d/%m/%Y").strftime("%Y-%m-%d")
                 full_date_from = dfmt + time_from
                 full_date_to   = dtmt + time_to
-                os.chdir('/Users/yossi/opsgenie')
+                os.chdir('/Users/yossi/Projects/opsgenie')
                 print("Applying: " + member + ' ' + full_date_from + ' ' + full_date_to)
                 subprocess.run(["./set_rota.sh", member, full_date_from, full_date_to])
                 time.sleep(1)
