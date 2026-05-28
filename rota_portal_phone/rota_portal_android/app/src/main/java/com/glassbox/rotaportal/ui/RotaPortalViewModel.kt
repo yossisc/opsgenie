@@ -10,11 +10,14 @@ import com.glassbox.rotaportal.shared.RotaRepository
 import com.glassbox.rotaportal.shared.ScheduleEntry
 import com.glassbox.rotaportal.shared.TokenValidationResult
 import java.time.LocalDate
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class RotaPortalViewModel(
     private val opsgenieClient: OpsgenieClient,
@@ -240,7 +243,9 @@ class RotaPortalViewModel(
         }
         viewModelScope.launch {
             try {
-                val rota = rotaRepository.loadMonth(year, month)
+                val rota = withContext(Dispatchers.IO) {
+                    rotaRepository.loadMonth(year, month)
+                }
                 _uiState.update {
                     it.copy(
                         rota = rota,
@@ -250,11 +255,13 @@ class RotaPortalViewModel(
                         bulkMode = false,
                     )
                 }
-            } catch (exc: RuntimeException) {
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Throwable) {
                 _uiState.update {
                     it.copy(
                         rotaLoading = false,
-                        rotaError = "Failed to load rota.",
+                        rotaError = exc.message ?: "Failed to load rota.",
                     )
                 }
             }

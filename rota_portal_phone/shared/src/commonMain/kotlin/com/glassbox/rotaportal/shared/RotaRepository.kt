@@ -1,19 +1,32 @@
 package com.glassbox.rotaportal.shared
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeout
 
 class RotaRepository(
     private val config: RotaConfig,
     private val opsgenieClient: OpsgenieClient,
 ) {
     suspend fun loadMonth(year: Int, month: Int): MonthlyRota {
-        val entries = RotaSchedule.monthEntries(year, month)
-        val overridesResult = try {
-            OverridesResult.Success(opsgenieClient.listOverrides(config.scheduleName))
+        val entries = try {
+            RotaSchedule.monthEntries(year, month)
         } catch (exc: CancellationException) {
             throw exc
         } catch (exc: Exception) {
-            OverridesResult.Failure("Override sync failed.")
+            throw IllegalStateException("Failed to build rota schedule.", exc)
+        }
+        val overridesResult = try {
+            OverridesResult.Success(
+                withTimeout(OVERRIDE_FETCH_TIMEOUT_MS) {
+                    opsgenieClient.listOverrides(config.scheduleName)
+                },
+            )
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (exc: Exception) {
+            OverridesResult.Failure(
+                exc.message?.let { "Override sync failed: $it" } ?: "Override sync failed.",
+            )
         }
 
         return MonthlyRota(
@@ -83,6 +96,10 @@ class RotaRepository(
     private sealed interface OverridesResult {
         data class Success(val overrides: List<OpsgenieOverride>) : OverridesResult
         data class Failure(val message: String) : OverridesResult
+    }
+
+    private companion object {
+        const val OVERRIDE_FETCH_TIMEOUT_MS = 30_000L
     }
 }
 

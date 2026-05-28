@@ -12,7 +12,7 @@ No dedicated iPhone app files are included yet. The shared module declares iOS d
 Security rules:
 
 - No API keys, tokens, or credentials are stored in source files.
-- Android user tokens are entered at runtime and stored only through `EncryptedSharedPreferences`.
+- Android user tokens are entered at runtime and stored in an encrypted Jetpack DataStore (Tink AEAD + Android Keystore).
 - `gradle.properties` is ignored by Git. Use `gradle.properties.example` as the local template.
 
 Local setup:

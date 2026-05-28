@@ -1,49 +1,71 @@
 package com.glassbox.rotaportal.data.secure
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.datastore.preferences.core.edit
 import com.glassbox.rotaportal.shared.TokenStore
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 class SecretManager(context: Context) : TokenStore {
     private val appContext = context.applicationContext
-
-    private val sharedPreferences by lazy {
-        val masterKey = MasterKey.Builder(appContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        EncryptedSharedPreferences.create(
-            appContext,
-            PREF_FILE,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-    }
+    private val dataStore = appContext.tokenDataStore
+    private val aead by lazy { SecureAead.get(appContext) }
+    private val cachedToken = AtomicReference<String?>(null)
+    private val initialized = AtomicBoolean(false)
 
     override fun saveToken(token: String) {
         val normalizedToken = token.trim()
         require(normalizedToken.isNotEmpty()) { "Token must not be empty" }
-        sharedPreferences.edit()
-            .putString(KEY_OPSGENIE_TOKEN, normalizedToken)
-            .apply()
+        ensureLoaded()
+        cachedToken.set(normalizedToken)
+        runBlocking(Dispatchers.IO) {
+            persistToken(normalizedToken)
+        }
     }
 
     override fun getToken(): String? {
-        return sharedPreferences.getString(KEY_OPSGENIE_TOKEN, null)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+        ensureLoaded()
+        return cachedToken.get()
     }
 
     override fun clearToken() {
-        sharedPreferences.edit()
-            .remove(KEY_OPSGENIE_TOKEN)
-            .apply()
+        ensureLoaded()
+        cachedToken.set(null)
+        runBlocking(Dispatchers.IO) {
+            dataStore.edit { preferences ->
+                preferences.remove(TokenPreferenceKeys.encryptedToken)
+            }
+        }
     }
 
-    companion object {
-        private const val PREF_FILE = "rota_portal_secure_prefs"
-        private const val KEY_OPSGENIE_TOKEN = "opsgenie_api_token"
+    private fun ensureLoaded() {
+        if (initialized.compareAndSet(false, true)) {
+            runBlocking(Dispatchers.IO) {
+                LegacyEncryptedPrefsMigrator.migrateIfNeeded(appContext, dataStore, aead)
+                cachedToken.set(readTokenFromStore())
+            }
+        }
+    }
+
+    private suspend fun readTokenFromStore(): String? {
+        val encrypted = dataStore.data.first()[TokenPreferenceKeys.encryptedToken] ?: return null
+        return try {
+            SecureAead.decrypt(aead, encrypted, tokenAssociatedData).trim().takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            dataStore.edit { preferences ->
+                preferences.remove(TokenPreferenceKeys.encryptedToken)
+            }
+            null
+        }
+    }
+
+    private suspend fun persistToken(token: String) {
+        val encrypted = SecureAead.encrypt(aead, token, tokenAssociatedData)
+        dataStore.edit { preferences ->
+            preferences[TokenPreferenceKeys.encryptedToken] = encrypted
+        }
     }
 }

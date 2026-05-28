@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -285,6 +287,7 @@ private fun RotaScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
+            onRefresh = onRefresh,
             onToday = onToday,
             onShiftMonth = onShiftMonth,
             onSetViewMode = onSetViewMode,
@@ -314,6 +317,7 @@ private fun RotaScreen(
 private fun RotaContent(
     uiState: RotaPortalUiState,
     modifier: Modifier,
+    onRefresh: () -> Unit,
     onToday: () -> Unit,
     onShiftMonth: (Int) -> Unit,
     onSetViewMode: (RotaViewMode) -> Unit,
@@ -345,53 +349,100 @@ private fun RotaContent(
         modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        RotaHeader(uiState = uiState, rota = rota)
-        RotaToolbar(
-            rota = rota,
-            viewMode = uiState.viewMode,
-            bulkMode = uiState.bulkMode,
-            selectedCount = uiState.selectedShiftIds.size,
-            onToday = onToday,
-            onShiftMonth = onShiftMonth,
-            onSetViewMode = onSetViewMode,
-            onSetBulkMode = onSetBulkMode,
-            onOpenBulkOverride = onOpenBulkOverride,
-        )
-        uiState.statusMessage?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if ("failed" in message.lowercase()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            RotaHeader(uiState = uiState, rota = rota)
+            RotaToolbar(
+                rota = rota,
+                viewMode = uiState.viewMode,
+                bulkMode = uiState.bulkMode,
+                selectedCount = uiState.selectedShiftIds.size,
+                onToday = onToday,
+                onShiftMonth = onShiftMonth,
+                onSetViewMode = onSetViewMode,
+                onSetBulkMode = onSetBulkMode,
+                onOpenBulkOverride = onOpenBulkOverride,
             )
+            uiState.statusMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if ("failed" in message.lowercase()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
         }
-        if (uiState.rotaLoading) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                Text("Loading rota")
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            when {
+                uiState.rotaLoading -> {
+                    Row(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text("Loading rota")
+                    }
+                }
+                rota != null -> {
+                    when (uiState.viewMode) {
+                        RotaViewMode.Month -> MonthGrid(
+                            rota = rota,
+                            selectedShiftIds = uiState.selectedShiftIds,
+                            bulkMode = uiState.bulkMode,
+                            gridState = gridState,
+                            onToggleShiftSelection = onToggleShiftSelection,
+                            onOpenSingleOverride = onOpenSingleOverride,
+                        )
+                        RotaViewMode.List -> ShiftList(
+                            rota = rota,
+                            selectedShiftIds = uiState.selectedShiftIds,
+                            bulkMode = uiState.bulkMode,
+                            listState = listState,
+                            onToggleShiftSelection = onToggleShiftSelection,
+                            onOpenSingleOverride = onOpenSingleOverride,
+                        )
+                    }
+                }
+                else -> {
+                    RotaEmptyState(
+                        modifier = Modifier.align(Alignment.Center),
+                        error = uiState.rotaError,
+                        onRetry = onRefresh,
+                    )
+                }
             }
-        } else if (rota != null) {
-            when (uiState.viewMode) {
-                RotaViewMode.Month -> MonthGrid(
-                    rota = rota,
-                    selectedShiftIds = uiState.selectedShiftIds,
-                    bulkMode = uiState.bulkMode,
-                    gridState = gridState,
-                    onToggleShiftSelection = onToggleShiftSelection,
-                    onOpenSingleOverride = onOpenSingleOverride,
-                )
-                RotaViewMode.List -> ShiftList(
-                    rota = rota,
-                    selectedShiftIds = uiState.selectedShiftIds,
-                    bulkMode = uiState.bulkMode,
-                    listState = listState,
-                    onToggleShiftSelection = onToggleShiftSelection,
-                    onOpenSingleOverride = onOpenSingleOverride,
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun RotaEmptyState(
+    modifier: Modifier,
+    error: String?,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = error ?: "Rota schedule did not load.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
+        Button(onClick = onRetry) {
+            Icon(Icons.Default.Refresh, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Retry")
         }
     }
 }
@@ -410,6 +461,13 @@ private fun RotaHeader(
             text = uiState.accountName?.let { "Account: $it" } ?: "Account validation succeeded.",
             style = MaterialTheme.typography.bodyMedium,
         )
+        if (uiState.rotaLoading && rota == null) {
+            Text(
+                text = "Loading schedule…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         if (rota != null) {
             Text(
                 text = "${monthName(rota.month)} ${rota.year}: ${rota.entries.size} shifts, ${rota.overrides.size} overrides",
