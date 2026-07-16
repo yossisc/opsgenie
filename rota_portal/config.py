@@ -21,7 +21,8 @@ TEAM_MEMBERS = {
 
 EXTRA_MEMBER_SUBSTITUTIONS = {
     "Extra1": "Gabi",
-    "Extra2": "Gour",
+    "Extra2": "Gabi",
+    "Extra3": "Gabi",
 }
 
-DEFAULT_ASSIGNABLE_MEMBERS = ["Yossi", "Gabi", "Gour", "Nadav", "Dovid"]
+DEFAULT_ASSIGNABLE_MEMBERS = ["Yossi", "Gabi", "Nadav", "Dovid"]

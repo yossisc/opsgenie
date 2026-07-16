@@ -7,16 +7,16 @@ from typing import Iterable
 from config import DEFAULT_ASSIGNABLE_MEMBERS, EXTRA_MEMBER_SUBSTITUTIONS
 
 
-FIRST_WORKDAY_USER = "Gabi"
+FIRST_WORKDAY_USER = "Yossi"
 FIRST_WEEKEND_USER = "Gabi"
-WORKDAY_ROTATION = ["Yossi", "Nadav", "Gabi", "Gour"]
-WEEKEND_ROTATION = ["Extra1", "Extra2", "Yossi", "Gabi", "Gour"]
-WEEKEND_ROTATION_WHEN_DATI = ["Extra1", "Extra2", "Yossi", "Gour", "Gabi"]
+WORKDAY_ROTATION = ["Yossi", "Nadav", "Gabi"]
+WEEKEND_ROTATION = ["Extra1", "Extra2", "Yossi", "Gabi", "Extra3"]
+WEEKEND_ROTATION_WHEN_DATI = ["Extra1", "Extra2", "Yossi", "Extra3", "Gabi"]
 WEEKLY_PAIRS = [
     ["Gabi", "Yossi"],
-    ["Gour", "Nadav"],
+    ["Yossi", "Nadav"],
     ["Yossi", "Gabi"],
-    ["Nadav", "Gour"],
+    ["Nadav", "Gabi"],
 ]
 ANCHOR_SUNDAY = datetime(2026, 5, 3)
 

@@ -1,6 +1,17 @@
+function currentYearMonth() {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
+function syncToCurrentMonth() {
+  const current = currentYearMonth();
+  state.year = current.year;
+  state.month = current.month;
+}
+
 const state = {
-  year: 2026,
-  month: 5,
+  year: 0,
+  month: 0,
   entries: [],
   members: [],
   overrides: [],
@@ -8,6 +19,8 @@ const state = {
   bulkMode: false,
   selectedShiftIds: new Set(),
 };
+
+syncToCurrentMonth();
 
 const calendar = document.querySelector("#calendar");
 const monthPicker = document.querySelector("#monthPicker");
@@ -368,3 +381,11 @@ document.querySelectorAll("input[name='mode']").forEach((radio) => {
 });
 
 loadMonth().catch((error) => setStatus(error.message, true));
+
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) {
+    return;
+  }
+  syncToCurrentMonth();
+  loadMonth().catch((error) => setStatus(error.message, true));
+});
