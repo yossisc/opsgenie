@@ -10,8 +10,14 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from config import DEFAULT_ASSIGNABLE_MEMBERS, PORT, ROTATION_NAME, SCHEDULE_NAME, TEAM_MEMBERS
-from opsgenie_client import OpsgenieError, OverrideRequest, create_or_update_override, list_overrides
-from schedule_engine import month_entries, team_payload
+from opsgenie_client import (
+    OpsgenieError,
+    OverrideRequest,
+    create_or_update_override,
+    get_schedule_timeline,
+    list_overrides,
+)
+from schedule_engine import team_payload
 
 
 ROOT = Path(__file__).resolve().parent
@@ -117,6 +123,76 @@ def month_override_payload(year: int, month: int) -> tuple[list[dict], str | Non
     return overrides, None
 
 
+def normalize_timeline_date(value: str) -> str:
+    return parse_opsgenie_date(value).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def month_final_periods(year: int, month: int) -> tuple[list[dict], str | None]:
+    """Resolved Opsgenie Final on-call periods for the calendar month."""
+    start_bound, end_bound = month_bounds(year, month)
+    # Timeline window is timezone-aware in Opsgenie; start a day early so the
+    # first local-night periods that spill into the month are included.
+    request_date = (start_bound).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        payload = get_schedule_timeline(request_date, interval=1, interval_unit="months")
+    except OpsgenieError as exc:
+        return [], str(exc)
+
+    periods: list[dict] = []
+    rotations = payload.get("data", {}).get("finalTimeline", {}).get("rotations", [])
+    for rotation in rotations:
+        if rotation.get("name") and rotation.get("name") != ROTATION_NAME:
+            continue
+        for period in rotation.get("periods", []):
+            try:
+                start = normalize_timeline_date(period["startDate"])
+                end = normalize_timeline_date(period["endDate"])
+                start_dt = parse_opsgenie_date(start)
+                end_dt = parse_opsgenie_date(end)
+            except (KeyError, ValueError):
+                continue
+            if end_dt <= start_bound or start_dt >= end_bound:
+                continue
+            username = (period.get("recipient") or {}).get("name")
+            member = username_to_member(username) if username else "Unassigned"
+            period_type = period.get("type") or "default"
+            periods.append({
+                "id": f"{start}_{end}_{member}_{period_type}".replace(":", ""),
+                "member": member,
+                "username": username,
+                "start": start,
+                "end": end,
+                "type": period_type,
+                "rotationName": rotation.get("name") or ROTATION_NAME,
+            })
+    periods.sort(key=lambda item: item["start"])
+    return merge_contiguous_periods(periods), None
+
+
+def merge_contiguous_periods(periods: list[dict]) -> list[dict]:
+    """Collapse abutting same-person periods so calendar days show one block."""
+    if not periods:
+        return []
+    merged: list[dict] = []
+    current = dict(periods[0])
+    for period in periods[1:]:
+        same_person = current["member"] == period["member"] and current["username"] == period["username"]
+        contiguous = current["end"] == period["start"]
+        if same_person and contiguous:
+            current["end"] = period["end"]
+            # Prefer override label when either side was an override.
+            if period["type"] == "override" or current["type"] == "override":
+                current["type"] = "override"
+            current["id"] = (
+                f"{current['start']}_{current['end']}_{current['member']}_{current['type']}".replace(":", "")
+            )
+            continue
+        merged.append(current)
+        current = dict(period)
+    merged.append(current)
+    return merged
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "RotaPortal/1.0"
 
@@ -146,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_month(self, query_string: str) -> None:
         try:
             year, month = parse_year_month(parse_qs(query_string))
-            entries = [entry.__dict__ for entry in month_entries(year, month, TEAM_MEMBERS)]
+            periods, timeline_error = month_final_periods(year, month)
             overrides, overrides_error = month_override_payload(year, month)
             json_response(self, HTTPStatus.OK, {
                 "scheduleName": SCHEDULE_NAME,
@@ -155,8 +231,9 @@ class Handler(BaseHTTPRequestHandler):
                 "month": month,
                 "teamMembers": team_payload(TEAM_MEMBERS),
                 "defaultAssignableMembers": DEFAULT_ASSIGNABLE_MEMBERS,
-                "entries": entries,
+                "periods": periods,
                 "overrides": overrides,
+                "timelineError": timeline_error,
                 "overridesError": overrides_error,
             })
         except Exception as exc:

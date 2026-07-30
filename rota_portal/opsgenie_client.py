@@ -91,6 +91,18 @@ def list_overrides() -> dict:
     return _request("GET", f"/v2/schedules/{schedule}/overrides?scheduleIdentifierType=name")
 
 
+def get_schedule_timeline(date: str, interval: int = 1, interval_unit: str = "months") -> dict:
+    """Fetch Opsgenie Final timeline for a schedule month/window."""
+    schedule = urllib.parse.quote(SCHEDULE_NAME, safe="")
+    query = urllib.parse.urlencode({
+        "identifierType": "name",
+        "interval": str(interval),
+        "intervalUnit": interval_unit,
+        "date": date,
+    })
+    return _request("GET", f"/v2/schedules/{schedule}/timeline?{query}")
+
+
 def _parse_date(value: str) -> datetime:
     if value.endswith("Z"):
         value = value[:-1] + "+00:00"

@@ -22,7 +22,7 @@ Defaults:
 - Schedule: `GB-INFRA-Schedule`
 - Rotation: `normal`
 
-The UI supports individual full-shift and partial-shift overrides. It does not include a monthly bulk apply action.
+The calendar shows Opsgenie **Final** on-call periods (resolved timeline), not the local predicted rotation. Override create/update is still supported from those periods. It does not include a monthly bulk apply action.
 
 Environment overrides:
 

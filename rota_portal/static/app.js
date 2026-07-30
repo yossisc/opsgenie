@@ -12,12 +12,11 @@ function syncToCurrentMonth() {
 const state = {
   year: 0,
   month: 0,
-  entries: [],
+  periods: [],
   members: [],
-  overrides: [],
-  selectedEntry: null,
+  selectedPeriod: null,
   bulkMode: false,
-  selectedShiftIds: new Set(),
+  selectedPeriodIds: new Set(),
 };
 
 syncToCurrentMonth();
@@ -34,6 +33,14 @@ const startInput = document.querySelector("#startInput");
 const endInput = document.querySelector("#endInput");
 const bulkModeInput = document.querySelector("#bulkMode");
 const openBulkOverrideButton = document.querySelector("#openBulkOverride");
+
+const MEMBER_COLORS = {
+  Yossi: "member-yossi",
+  Gabi: "member-gabi",
+  Nadav: "member-nadav",
+  Dovid: "member-dovid",
+  Unassigned: "member-unassigned",
+};
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -53,9 +60,9 @@ function localInputToIsoZ(value) {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-function formatUtcTime(ms) {
+function formatLocalTime(ms) {
   const date = new Date(ms);
-  return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function monthLabel(year, month) {
@@ -78,7 +85,7 @@ function setStatus(message, error = false) {
 }
 
 function closeShiftDialog() {
-  state.selectedEntry = null;
+  state.selectedPeriod = null;
   shiftDialog.dataset.mode = "";
   if (shiftDialog.open) {
     shiftDialog.close();
@@ -95,22 +102,34 @@ async function fetchJson(url, options) {
 }
 
 async function loadMonth() {
-  setStatus("Loading schedule...");
+  setStatus("Loading on-call timeline...");
   const payload = await fetchJson(`/api/month?year=${state.year}&month=${state.month}`);
-  state.entries = payload.entries;
+  state.periods = payload.periods || [];
   state.members = payload.teamMembers;
-  state.overrides = payload.overrides || [];
-  state.selectedShiftIds.clear();
-  subtitle.textContent = `${payload.scheduleName} / ${payload.rotationName}`;
+  state.selectedPeriodIds.clear();
+  subtitle.textContent = `${payload.scheduleName} / ${payload.rotationName} (Final)`;
   monthPicker.value = `${state.year}-${pad(state.month)}`;
   renderMemberOptions(payload.defaultAssignableMembers);
   renderCalendar();
-  const overrideNote = payload.overridesError ? ` Override sync failed: ${payload.overridesError}` : ` ${state.overrides.length} existing overrides loaded.`;
-  setStatus(`${state.entries.length} shifts loaded for ${monthLabel(state.year, state.month)}.${overrideNote}`, Boolean(payload.overridesError));
+  updateBulkControls();
+
+  if (payload.timelineError) {
+    setStatus(`Failed to load Opsgenie Final timeline: ${payload.timelineError}`, true);
+    return;
+  }
+
+  const assigned = state.periods.filter((period) => period.member !== "Unassigned").length;
+  const unassigned = state.periods.length - assigned;
+  const overrideCount = state.periods.filter((period) => period.type === "override").length;
+  let note = `${monthLabel(state.year, state.month)}: ${state.periods.length} on-call periods from Opsgenie Final`;
+  if (overrideCount) note += `, ${overrideCount} overrides`;
+  if (unassigned) note += `, ${unassigned} unassigned`;
+  if (payload.overridesError) note += `. Override list sync failed: ${payload.overridesError}`;
+  setStatus(note, Boolean(payload.overridesError));
 }
 
 function updateBulkControls() {
-  const count = state.selectedShiftIds.size;
+  const count = state.selectedPeriodIds.size;
   openBulkOverrideButton.disabled = !state.bulkMode || count === 0;
   openBulkOverrideButton.textContent = count ? `Override Selected (${count})` : "Override Selected";
 }
@@ -127,47 +146,37 @@ function renderMemberOptions(defaults) {
   memberSelect.innerHTML = sorted.map((name) => `<option value="${name}">${name}</option>`).join("");
 }
 
-function overlapsDay(item, dateKey) {
-  const dayStart = Date.parse(`${dateKey}T00:00:00Z`);
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-  return Date.parse(item.end) > dayStart && Date.parse(item.start) < dayEnd;
+function dayBounds(dateKey) {
+  const start = new Date(`${dateKey}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start: start.getTime(), end: end.getTime() };
 }
 
-function coveredItemsForDate(dateKey) {
-  const items = [];
-  for (const entry of state.entries) {
-    if (overlapsDay(entry, dateKey)) {
-      items.push({ type: "shift", entry });
-    }
-  }
-  for (const override of state.overrides) {
-    const fullShiftOverride = !override.partial && state.entries.some((entry) => {
-      return entry.start === override.start && entry.end === override.end;
-    });
-    if (fullShiftOverride) {
-      continue;
-    }
-    if (overlapsDay(override, dateKey)) {
-      items.push({ type: "override", override });
-    }
-  }
-  return items.sort((a, b) => Date.parse((a.entry || a.override).start) - Date.parse((b.entry || b.override).start));
+function overlapsDay(item, dateKey) {
+  const { start, end } = dayBounds(dateKey);
+  return Date.parse(item.end) > start && Date.parse(item.start) < end;
+}
+
+function periodsForDate(dateKey) {
+  return state.periods
+    .filter((period) => overlapsDay(period, dateKey))
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 
 function clippedTimeLabel(item, dateKey) {
-  const dayStart = Date.parse(`${dateKey}T00:00:00Z`);
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+  const { start: dayStart, end: dayEnd } = dayBounds(dateKey);
   const start = Math.max(Date.parse(item.start), dayStart);
   const end = Math.min(Date.parse(item.end), dayEnd);
-  const endLabel = end === dayEnd ? "24:00" : formatUtcTime(end);
-  return `${formatUtcTime(start)}-${endLabel} UTC`;
+  const endLabel = end === dayEnd ? "24:00" : formatLocalTime(end);
+  return `${formatLocalTime(start)}-${endLabel}`;
 }
 
-function effectiveMember(entry) {
-  const fullOverride = state.overrides.find((override) => {
-    return !override.partial && override.start === entry.start && override.end === entry.end;
-  });
-  return fullOverride ? fullOverride.member : entry.apply_member;
+function typeLabel(type) {
+  if (type === "override") return "Override";
+  if (type === "historical") return "Historical";
+  if (type === "default") return "Base rotation";
+  return type || "On-call";
 }
 
 function renderCalendar() {
@@ -185,97 +194,89 @@ function renderCalendar() {
     cell.className = `day${day.getMonth() === state.month - 1 ? "" : " outside"}${dateKey === todayKey ? " today" : ""}`;
     cell.innerHTML = `<div class="date-num">${day.getDate()}</div>`;
 
-    for (const item of coveredItemsForDate(dateKey)) {
+    for (const period of periodsForDate(dateKey)) {
+      const selected = state.selectedPeriodIds.has(period.id);
+      const colorClass = MEMBER_COLORS[period.member] || "member-other";
       const button = document.createElement("button");
-      if (item.type === "override") {
-        const override = item.override;
-        button.className = `shift override ${override.partial ? "partial-override" : ""}`;
-        button.innerHTML = `<strong>${override.member}</strong><span>${clippedTimeLabel(override, dateKey)}</span>`;
-        button.dataset.tip = `Opsgenie override\n${formatTime(override.start)} to ${formatTime(override.end)}\n${override.partial ? "Partial override" : "Full shift override"}`;
-      } else {
-        const entry = item.entry;
-        const selected = state.selectedShiftIds.has(entry.id);
-        button.className = `shift ${entry.kind === "WEEKEND" ? "weekend" : "regular"}${selected ? " selected" : ""}`;
-        const owner = effectiveMember(entry);
-        const memberText = entry.member === owner ? entry.member : `${entry.member} -> ${owner}`;
-        const checkbox = state.bulkMode ? `<span class="select-box">${selected ? "x" : ""}</span>` : "";
-        button.innerHTML = `${checkbox}<strong>${memberText}</strong><span>${clippedTimeLabel(entry, dateKey)}</span>`;
-        button.dataset.tip = state.bulkMode
-          ? `${entry.kind}\n${formatTime(entry.start)} to ${formatTime(entry.end)}\nClick to select`
-          : `${entry.kind}\n${formatTime(entry.start)} to ${formatTime(entry.end)}\nClick to override`;
-        button.addEventListener("click", () => {
-          if (state.bulkMode) {
-            toggleShiftSelection(entry.id);
-          } else {
-            openSingleShiftDialog(entry);
-          }
-        });
-      }
+      button.className = `shift oncall ${colorClass} type-${period.type}${selected ? " selected" : ""}`;
+      const checkbox = state.bulkMode ? `<span class="select-box">${selected ? "x" : ""}</span>` : "";
+      button.innerHTML = `${checkbox}<strong>${period.member}</strong><span>${clippedTimeLabel(period, dateKey)}</span>`;
+      button.dataset.tip = [
+        `${period.member} on-call`,
+        `${formatTime(period.start)} to ${formatTime(period.end)}`,
+        typeLabel(period.type),
+        state.bulkMode ? "Click to select" : "Click to override",
+      ].join("\n");
+      button.addEventListener("click", () => {
+        if (state.bulkMode) {
+          togglePeriodSelection(period.id);
+        } else {
+          openSinglePeriodDialog(period);
+        }
+      });
       cell.appendChild(button);
     }
     calendar.appendChild(cell);
   }
 }
 
-function selectedEntries() {
-  return state.entries.filter((entry) => state.selectedShiftIds.has(entry.id));
+function selectedPeriods() {
+  return state.periods.filter((period) => state.selectedPeriodIds.has(period.id));
 }
 
-function toggleShiftSelection(entryId) {
-  if (state.selectedShiftIds.has(entryId)) {
-    state.selectedShiftIds.delete(entryId);
+function togglePeriodSelection(periodId) {
+  if (state.selectedPeriodIds.has(periodId)) {
+    state.selectedPeriodIds.delete(periodId);
   } else {
-    state.selectedShiftIds.add(entryId);
+    state.selectedPeriodIds.add(periodId);
   }
   renderCalendar();
   updateBulkControls();
 }
 
-function openSingleShiftDialog(entry) {
-  state.selectedEntry = entry;
+function openSinglePeriodDialog(period) {
+  state.selectedPeriod = period;
   shiftDialog.dataset.mode = "single";
   document.querySelector("input[name='mode'][value='full']").checked = true;
   partialFields.classList.remove("active");
   document.querySelectorAll("input[name='mode']").forEach((radio) => {
     radio.disabled = false;
   });
-  memberSelect.value = entry.apply_member;
-  startInput.value = isoToLocalInput(entry.start);
-  endInput.value = isoToLocalInput(entry.end);
+  const defaultMember = period.member !== "Unassigned" ? period.member : (state.members[0]?.name || "Yossi");
+  if ([...memberSelect.options].some((option) => option.value === defaultMember)) {
+    memberSelect.value = defaultMember;
+  }
+  startInput.value = isoToLocalInput(period.start);
+  endInput.value = isoToLocalInput(period.end);
   shiftSummary.textContent = [
-    `${entry.member} shift (${entry.kind})`,
-    `${formatTime(entry.start)} to ${formatTime(entry.end)}`,
-    `Current apply target: ${entry.apply_member}`,
+    `${period.member} on-call (${typeLabel(period.type)})`,
+    `${formatTime(period.start)} to ${formatTime(period.end)}`,
   ].join("\n");
   shiftDialog.showModal();
 }
 
 function openBulkShiftDialog() {
-  const entries = selectedEntries();
-  if (!entries.length) return;
-  state.selectedEntry = null;
+  const periods = selectedPeriods();
+  if (!periods.length) return;
+  state.selectedPeriod = null;
   shiftDialog.dataset.mode = "bulk";
   document.querySelector("input[name='mode'][value='full']").checked = true;
   partialFields.classList.remove("active");
   document.querySelectorAll("input[name='mode']").forEach((radio) => {
     radio.disabled = radio.value !== "full";
   });
-  memberSelect.value = entries[0].apply_member;
+  const firstMember = periods.find((period) => period.member !== "Unassigned")?.member;
+  if (firstMember && [...memberSelect.options].some((option) => option.value === firstMember)) {
+    memberSelect.value = firstMember;
+  }
   startInput.value = "";
   endInput.value = "";
   shiftSummary.textContent = [
-    `${entries.length} selected full shifts`,
-    entries.slice(0, 5).map((entry) => `${entry.member}: ${formatTime(entry.start)} to ${formatTime(entry.end)}`).join("\n"),
-    entries.length > 5 ? `...and ${entries.length - 5} more` : "",
+    `${periods.length} selected on-call periods`,
+    periods.slice(0, 5).map((period) => `${period.member}: ${formatTime(period.start)} to ${formatTime(period.end)}`).join("\n"),
+    periods.length > 5 ? `...and ${periods.length - 5} more` : "",
   ].filter(Boolean).join("\n");
   shiftDialog.showModal();
-}
-
-function upsertOverride(override) {
-  state.overrides = state.overrides.filter((existing) => {
-    return existing.start !== override.start || existing.end !== override.end;
-  });
-  state.overrides.push(override);
 }
 
 async function submitOverride(event) {
@@ -284,12 +285,12 @@ async function submitOverride(event) {
     await submitBulkOverride();
     return;
   }
-  const entry = state.selectedEntry;
-  if (!entry) return;
+  const period = state.selectedPeriod;
+  if (!period) return;
   const mode = document.querySelector("input[name='mode']:checked").value;
   const member = memberSelect.value;
-  const start = mode === "full" ? entry.start : localInputToIsoZ(startInput.value);
-  const end = mode === "full" ? entry.end : localInputToIsoZ(endInput.value);
+  const start = mode === "full" ? period.start : localInputToIsoZ(startInput.value);
+  const end = mode === "full" ? period.end : localInputToIsoZ(endInput.value);
   setStatus(`Creating ${mode} override for ${member}...`);
   try {
     const payload = await fetchJson("/api/override", {
@@ -302,42 +303,36 @@ async function submitOverride(event) {
         partial: mode === "partial",
       }),
     });
-    upsertOverride(payload.override);
-    renderCalendar();
     closeShiftDialog();
-    setStatus(`Override ${payload.operation} in Opsgenie and refreshed: ${payload.alias}`);
+    await loadMonth();
+    setStatus(`Override ${payload.operation} in Opsgenie: ${payload.alias}`);
   } catch (error) {
     setStatus(error.message, true);
   }
 }
 
 async function submitBulkOverride() {
-  const entries = selectedEntries();
-  if (!entries.length) return;
+  const periods = selectedPeriods();
+  if (!periods.length) return;
   const member = memberSelect.value;
-  setStatus(`Overriding ${entries.length} selected shifts for ${member}...`);
+  setStatus(`Overriding ${periods.length} selected periods for ${member}...`);
   try {
     const payload = await fetchJson("/api/override-bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         member,
-        shifts: entries.map((entry) => ({
-          id: entry.id,
-          start: entry.start,
-          end: entry.end,
+        shifts: periods.map((period) => ({
+          id: period.id,
+          start: period.start,
+          end: period.end,
         })),
       }),
     });
     const okResults = payload.results.filter((item) => item.ok);
-    for (const result of okResults) {
-      upsertOverride(result.override);
-    }
-    state.selectedShiftIds.clear();
-    renderCalendar();
-    updateBulkControls();
-    closeShiftDialog();
     const failed = payload.results.length - okResults.length;
+    closeShiftDialog();
+    await loadMonth();
     setStatus(`Bulk override finished: ${okResults.length} succeeded, ${failed} failed.`, failed > 0);
   } catch (error) {
     setStatus(error.message, true);
@@ -359,7 +354,7 @@ openBulkOverrideButton.addEventListener("click", openBulkShiftDialog);
 bulkModeInput.addEventListener("change", () => {
   state.bulkMode = bulkModeInput.checked;
   if (!state.bulkMode) {
-    state.selectedShiftIds.clear();
+    state.selectedPeriodIds.clear();
   }
   renderCalendar();
   updateBulkControls();
