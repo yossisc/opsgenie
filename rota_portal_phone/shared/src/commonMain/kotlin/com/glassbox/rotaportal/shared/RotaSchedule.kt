@@ -17,6 +17,15 @@ data class ScheduleEntry(
     val dayName: String,
 )
 
+data class OnCallPeriod(
+    val id: String,
+    val member: String,
+    val username: String?,
+    val start: String,
+    val end: String,
+    val type: String,
+)
+
 data class OpsgenieOverride(
     val alias: String,
     val member: String,
@@ -30,11 +39,10 @@ data class MonthlyRota(
     val rotationName: String,
     val year: Int,
     val month: Int,
-    val entries: List<ScheduleEntry>,
-    val overrides: List<OpsgenieOverride>,
+    val periods: List<OnCallPeriod>,
     val teamMembers: List<String>,
     val defaultAssignableMembers: List<String>,
-    val overridesError: String? = null,
+    val timelineError: String? = null,
 )
 
 enum class ShiftKind {

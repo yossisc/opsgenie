@@ -47,7 +47,11 @@ function pad(value) {
 }
 
 function isoToLocalInput(value) {
-  const date = new Date(value);
+  return msToLocalInput(Date.parse(value));
+}
+
+function msToLocalInput(ms) {
+  const date = new Date(ms);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -58,6 +62,10 @@ function dateKeyFromDate(date) {
 function localInputToIsoZ(value) {
   const date = new Date(value);
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function msToIsoZ(ms) {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 function formatLocalTime(ms) {
@@ -172,11 +180,43 @@ function clippedTimeLabel(item, dateKey) {
   return `${formatLocalTime(start)}-${endLabel}`;
 }
 
+function dayScopedOverrideRange(period, dateKey) {
+  // Prefer 24h slices from period.start (matches rota handover, e.g. 08:00→08:00).
+  const periodStart = Date.parse(period.start);
+  const periodEnd = Date.parse(period.end);
+  const { start: dayStart, end: dayEnd } = dayBounds(dateKey);
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  let best = null;
+  let bestOverlap = -1;
+  for (let chunkStart = periodStart; chunkStart < periodEnd; chunkStart += dayMs) {
+    const chunkEnd = Math.min(chunkStart + dayMs, periodEnd);
+    const overlap = Math.min(chunkEnd, dayEnd) - Math.max(chunkStart, dayStart);
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      best = { startMs: chunkStart, endMs: chunkEnd };
+    }
+  }
+  if (!best || bestOverlap <= 0) {
+    return {
+      startMs: Math.max(periodStart, dayStart),
+      endMs: Math.min(periodEnd, dayEnd),
+    };
+  }
+  return best;
+}
+
 function typeLabel(type) {
   if (type === "override") return "Override";
   if (type === "historical") return "Historical";
   if (type === "default") return "Base rotation";
   return type || "On-call";
+}
+
+function setOverrideMode(mode) {
+  const target = document.querySelector(`input[name='mode'][value='${mode}']`);
+  if (target) target.checked = true;
+  partialFields.classList.toggle("active", mode === "partial");
 }
 
 function renderCalendar() {
@@ -211,7 +251,7 @@ function renderCalendar() {
         if (state.bulkMode) {
           togglePeriodSelection(period.id);
         } else {
-          openSinglePeriodDialog(period);
+          openSinglePeriodDialog(period, dateKey);
         }
       });
       cell.appendChild(button);
@@ -234,24 +274,35 @@ function togglePeriodSelection(periodId) {
   updateBulkControls();
 }
 
-function openSinglePeriodDialog(period) {
+function openSinglePeriodDialog(period, dateKey) {
   state.selectedPeriod = period;
   shiftDialog.dataset.mode = "single";
-  document.querySelector("input[name='mode'][value='full']").checked = true;
-  partialFields.classList.remove("active");
   document.querySelectorAll("input[name='mode']").forEach((radio) => {
     radio.disabled = false;
   });
-  const defaultMember = period.member !== "Unassigned" ? period.member : (state.members[0]?.name || "Yossi");
-  if ([...memberSelect.options].some((option) => option.value === defaultMember)) {
+  const options = [...memberSelect.options].map((option) => option.value);
+  const defaultMember = options.find((name) => name !== period.member)
+    || (period.member !== "Unassigned" ? period.member : options[0])
+    || "Yossi";
+  if (options.includes(defaultMember)) {
     memberSelect.value = defaultMember;
   }
-  startInput.value = isoToLocalInput(period.start);
-  endInput.value = isoToLocalInput(period.end);
+
+  const periodStartMs = Date.parse(period.start);
+  const periodEndMs = Date.parse(period.end);
+  const scoped = dayScopedOverrideRange(period, dateKey);
+  const spansBeyondDay = scoped.startMs > periodStartMs || scoped.endMs < periodEndMs;
+  startInput.value = msToLocalInput(scoped.startMs);
+  endInput.value = msToLocalInput(scoped.endMs);
+  setOverrideMode(spansBeyondDay ? "partial" : "full");
+
   shiftSummary.textContent = [
     `${period.member} on-call (${typeLabel(period.type)})`,
-    `${formatTime(period.start)} to ${formatTime(period.end)}`,
-  ].join("\n");
+    `Full period: ${formatTime(period.start)} to ${formatTime(period.end)}`,
+    spansBeyondDay
+      ? `Selected day window: ${formatTime(msToIsoZ(scoped.startMs))} to ${formatTime(msToIsoZ(scoped.endMs))}`
+      : null,
+  ].filter(Boolean).join("\n");
   shiftDialog.showModal();
 }
 
@@ -260,8 +311,7 @@ function openBulkShiftDialog() {
   if (!periods.length) return;
   state.selectedPeriod = null;
   shiftDialog.dataset.mode = "bulk";
-  document.querySelector("input[name='mode'][value='full']").checked = true;
-  partialFields.classList.remove("active");
+  setOverrideMode("full");
   document.querySelectorAll("input[name='mode']").forEach((radio) => {
     radio.disabled = radio.value !== "full";
   });
@@ -291,7 +341,11 @@ async function submitOverride(event) {
   const member = memberSelect.value;
   const start = mode === "full" ? period.start : localInputToIsoZ(startInput.value);
   const end = mode === "full" ? period.end : localInputToIsoZ(endInput.value);
-  setStatus(`Creating ${mode} override for ${member}...`);
+  if (Date.parse(end) <= Date.parse(start)) {
+    setStatus("Override end must be after start.", true);
+    return;
+  }
+  setStatus(`Creating ${mode} override for ${member}: ${formatTime(start)} to ${formatTime(end)}...`);
   try {
     const payload = await fetchJson("/api/override", {
       method: "POST",
@@ -305,7 +359,12 @@ async function submitOverride(event) {
     });
     closeShiftDialog();
     await loadMonth();
-    setStatus(`Override ${payload.operation} in Opsgenie: ${payload.alias}`);
+    const carvedNote = payload.carved?.length
+      ? ` (carved ${payload.carved.length} overlapping override${payload.carved.length === 1 ? "" : "s"})`
+      : "";
+    setStatus(
+      `Override ${payload.operation} in Opsgenie: ${payload.alias} (${formatTime(start)} to ${formatTime(end)})${carvedNote}`,
+    );
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -371,7 +430,7 @@ monthPicker.addEventListener("change", () => {
 
 document.querySelectorAll("input[name='mode']").forEach((radio) => {
   radio.addEventListener("change", () => {
-    partialFields.classList.toggle("active", radio.value === "partial" && radio.checked);
+    if (radio.checked) setOverrideMode(radio.value);
   });
 });
 

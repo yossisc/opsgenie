@@ -65,11 +65,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassbox.rotaportal.shared.MonthlyRota
-import com.glassbox.rotaportal.shared.OpsgenieOverride
-import com.glassbox.rotaportal.shared.ScheduleEntry
-import com.glassbox.rotaportal.shared.ShiftKind
+import com.glassbox.rotaportal.shared.OnCallPeriod
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun RotaPortalApp(
@@ -239,7 +241,7 @@ private fun RotaScreen(
     onSetViewMode: (RotaViewMode) -> Unit,
     onSetBulkMode: (Boolean) -> Unit,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (ScheduleEntry) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod) -> Unit,
     onOpenBulkOverride: () -> Unit,
     onUpdateDialogMember: (String) -> Unit,
     onUpdateDialogPartial: (Boolean) -> Unit,
@@ -323,7 +325,7 @@ private fun RotaContent(
     onSetViewMode: (RotaViewMode) -> Unit,
     onSetBulkMode: (Boolean) -> Unit,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (ScheduleEntry) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod) -> Unit,
     onOpenBulkOverride: () -> Unit,
     onConsumeTodayFocus: () -> Unit,
 ) {
@@ -454,7 +456,7 @@ private fun RotaHeader(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = rota?.let { "${it.scheduleName} / ${it.rotationName}" } ?: "Connected to Opsgenie",
+            text = rota?.let { "${it.scheduleName} / ${it.rotationName} (Final)" } ?: "Connected to Opsgenie",
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
@@ -463,14 +465,20 @@ private fun RotaHeader(
         )
         if (uiState.rotaLoading && rota == null) {
             Text(
-                text = "Loading schedule…",
+                text = "Loading on-call timeline…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
         }
         if (rota != null) {
+            val overrideCount = rota.periods.count { it.type == "override" }
+            val unassigned = rota.periods.count { it.member == "Unassigned" }
             Text(
-                text = "${monthName(rota.month)} ${rota.year}: ${rota.entries.size} shifts, ${rota.overrides.size} overrides",
+                text = buildString {
+                    append("${monthName(rota.month)} ${rota.year}: ${rota.periods.size} on-call periods")
+                    if (overrideCount > 0) append(", $overrideCount overrides")
+                    if (unassigned > 0) append(", $unassigned unassigned")
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -588,7 +596,7 @@ private fun MonthGrid(
     bulkMode: Boolean,
     gridState: LazyGridState,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (ScheduleEntry) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod) -> Unit,
 ) {
     val days = remember(rota.year, rota.month) { monthDays(rota.year, rota.month) }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -630,9 +638,9 @@ private fun DayCell(
     selectedShiftIds: Set<String>,
     bulkMode: Boolean,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (ScheduleEntry) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod) -> Unit,
 ) {
-    val entries = rota.entries.filter { it.overlaps(day.date) }
+    val periods = rota.periods.filter { it.overlapsLocalDay(day.date) }
     val today = day.date == LocalDate.now()
     Card(
         modifier = Modifier
@@ -660,20 +668,19 @@ private fun DayCell(
                 style = MaterialTheme.typography.labelMedium,
                 color = if (day.inMonth) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
             )
-            entries.take(3).forEach { entry ->
+            periods.take(3).forEach { period ->
                 ShiftChip(
-                    entry = entry,
-                    override = rota.overrideFor(entry),
-                    selected = entry.id in selectedShiftIds,
+                    period = period,
+                    day = day.date,
+                    selected = period.id in selectedShiftIds,
                     bulkMode = bulkMode,
-                    compact = true,
                     onClick = {
-                        if (bulkMode) onToggleShiftSelection(entry.id) else onOpenSingleOverride(entry)
+                        if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period)
                     },
                 )
             }
-            if (entries.size > 3) {
-                Text("+${entries.size - 3}", style = MaterialTheme.typography.labelSmall)
+            if (periods.size > 3) {
+                Text("+${periods.size - 3}", style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -686,21 +693,20 @@ private fun ShiftList(
     bulkMode: Boolean,
     listState: LazyListState,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (ScheduleEntry) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = listState,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(rota.entries, key = { it.id }) { entry ->
+        items(rota.periods, key = { it.id }) { period ->
             ShiftRow(
-                entry = entry,
-                rota = rota,
-                selected = entry.id in selectedShiftIds,
+                period = period,
+                selected = period.id in selectedShiftIds,
                 bulkMode = bulkMode,
                 onClick = {
-                    if (bulkMode) onToggleShiftSelection(entry.id) else onOpenSingleOverride(entry)
+                    if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period)
                 },
             )
         }
@@ -709,16 +715,11 @@ private fun ShiftList(
 
 @Composable
 private fun ShiftRow(
-    entry: ScheduleEntry,
-    rota: MonthlyRota,
+    period: OnCallPeriod,
     selected: Boolean,
     bulkMode: Boolean,
     onClick: () -> Unit,
 ) {
-    val override = rota.overrides.firstOrNull { it.start == entry.start && it.end == entry.end }
-    val effectiveMember = override?.member ?: entry.applyMember
-    val changed = effectiveMember != entry.member
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -726,10 +727,8 @@ private fun ShiftRow(
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer
-            } else if (entry.kind == ShiftKind.Weekend) {
-                MaterialTheme.colorScheme.secondaryContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                memberColor(period.member).copy(alpha = 0.25f)
             },
         ),
     ) {
@@ -745,16 +744,16 @@ private fun ShiftRow(
                 Text(
                     text = buildString {
                         if (bulkMode) append(if (selected) "[x] " else "[ ] ")
-                        append(if (changed) "${entry.member} -> $effectiveMember" else effectiveMember)
+                        append(period.member)
                     },
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = entry.kind.name.lowercase().replaceFirstChar { it.uppercase() },
+                    text = typeLabel(period.type),
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier
                         .background(
-                            color = if (entry.kind == ShiftKind.Weekend) Color(0xFFB45309) else Color(0xFF0F766E),
+                            color = memberColor(period.member),
                             shape = MaterialTheme.shapes.small,
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -762,42 +761,30 @@ private fun ShiftRow(
                 )
             }
             Text(
-                text = "${formatDate(entry.start)} ${formatTime(entry.start)} - ${formatDate(entry.end)} ${formatTime(entry.end)} UTC",
+                text = "${formatLocalDateTime(period.start)} - ${formatLocalDateTime(period.end)}",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            override?.let {
-                Text(
-                    text = "Opsgenie override: ${it.member}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
         }
     }
 }
 
 @Composable
 private fun ShiftChip(
-    entry: ScheduleEntry,
-    override: OpsgenieOverride?,
+    period: OnCallPeriod,
+    day: LocalDate,
     selected: Boolean,
     bulkMode: Boolean,
-    compact: Boolean,
     onClick: () -> Unit,
 ) {
-    val effectiveMember = override?.member ?: entry.applyMember
     val label = buildString {
         if (bulkMode) append(if (selected) "x " else "- ")
-        append(effectiveMember)
+        append(period.member)
+        append(' ')
+        append(clippedLocalRange(period, day))
     }
-    val color = when {
-        selected -> MaterialTheme.colorScheme.primary
-        entry.kind == ShiftKind.Weekend -> Color(0xFFB45309)
-        override != null -> Color(0xFF7C3AED)
-        else -> Color(0xFF0F766E)
-    }
+    val color = if (selected) MaterialTheme.colorScheme.primary else memberColor(period.member)
     Text(
-        text = if (compact) label.take(12) else label,
+        text = label.take(18),
         modifier = Modifier
             .fillMaxWidth()
             .background(color = color, shape = MaterialTheme.shapes.small)
@@ -805,7 +792,7 @@ private fun ShiftChip(
             .padding(horizontal = 4.dp, vertical = 3.dp),
         color = Color.White,
         style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = if (label.length > 5) 9.sp else 10.sp,
+            fontSize = if (label.length > 10) 8.sp else 10.sp,
             lineHeight = 10.sp,
         ),
         maxLines = 1,
@@ -830,8 +817,8 @@ private fun OverrideDialog(
         title = {
             Text(
                 when (dialog) {
-                    is OverrideDialogState.Single -> "Override shift"
-                    is OverrideDialogState.Bulk -> "Override ${dialog.entries.size} shifts"
+                    is OverrideDialogState.Single -> "Override on-call"
+                    is OverrideDialogState.Bulk -> "Override ${dialog.periods.size} periods"
                 },
             )
         },
@@ -934,7 +921,7 @@ private suspend fun scrollListToToday(
     rota: MonthlyRota,
     today: LocalDate,
 ) {
-    val index = rota.entries.indexOfFirst { it.overlaps(today) }
+    val index = rota.periods.indexOfFirst { it.overlapsLocalDay(today) }
     if (index >= 0) {
         listState.animateScrollToItem(index)
     }
@@ -964,28 +951,58 @@ private fun MonthlyRota.sortedMembers(): List<String> {
     }
 }
 
-private fun MonthlyRota.overrideFor(entry: ScheduleEntry): OpsgenieOverride? {
-    return overrides.firstOrNull { it.start == entry.start && it.end == entry.end }
+private fun OnCallPeriod.overlapsLocalDay(date: LocalDate): Boolean {
+    val zone = ZoneId.systemDefault()
+    val dayStart = date.atStartOfDay(zone).toInstant()
+    val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant()
+    val startInstant = Instant.parse(start)
+    val endInstant = Instant.parse(end)
+    return endInstant > dayStart && startInstant < dayEnd
 }
 
-private fun ScheduleEntry.overlaps(date: LocalDate): Boolean {
-    val startDate = LocalDate.parse(start.substring(0, 10))
-    val endDate = LocalDate.parse(end.substring(0, 10))
-    return date >= startDate && date <= endDate
+private fun clippedLocalRange(period: OnCallPeriod, date: LocalDate): String {
+    val zone = ZoneId.systemDefault()
+    val dayStart = date.atStartOfDay(zone)
+    val dayEnd = date.plusDays(1).atStartOfDay(zone)
+    val start = maxOf(Instant.parse(period.start).atZone(zone), dayStart)
+    val end = minOf(Instant.parse(period.end).atZone(zone), dayEnd)
+    val endLabel = if (end == dayEnd) "24:00" else end.format(LOCAL_TIME)
+    return "${start.format(LOCAL_TIME)}-$endLabel"
 }
 
 private fun OverrideDialogState.summaryText(): String {
     return when (this) {
-        is OverrideDialogState.Single -> "${entry.member} ${entry.kind.name.lowercase()} shift\n${entry.start} to ${entry.end}"
-        is OverrideDialogState.Bulk -> entries.take(4)
+        is OverrideDialogState.Single -> "${period.member} on-call (${typeLabel(period.type)})\n${period.start} to ${period.end}"
+        is OverrideDialogState.Bulk -> periods.take(4)
             .joinToString("\n") { "${it.member}: ${it.start} to ${it.end}" }
-            .let { text -> if (entries.size > 4) "$text\n...and ${entries.size - 4} more" else text }
+            .let { text -> if (periods.size > 4) "$text\n...and ${periods.size - 4} more" else text }
     }
 }
 
-private fun formatDate(value: String): String = value.substring(0, 10)
+private fun typeLabel(type: String): String {
+    return when (type) {
+        "override" -> "Override"
+        "historical" -> "Historical"
+        "default" -> "Base"
+        else -> type.replaceFirstChar { it.uppercase() }
+    }
+}
 
-private fun formatTime(value: String): String = value.substring(11, 16)
+private fun memberColor(member: String): Color {
+    return when (member) {
+        "Nadav" -> Color(0xFFD97706)
+        "Dovid" -> Color(0xFF2563EB)
+        "Yossi" -> Color(0xFFDC2626)
+        "Gabi" -> Color(0xFF7C3AED)
+        "Gour" -> Color(0xFF0F766E)
+        "Unassigned" -> Color(0xFF9CA3AF)
+        else -> Color(0xFF64748B)
+    }
+}
+
+private fun formatLocalDateTime(value: String): String {
+    return Instant.parse(value).atZone(ZoneId.systemDefault()).format(LOCAL_DATE_TIME)
+}
 
 private fun monthName(month: Int): String {
     return listOf(
@@ -1003,3 +1020,6 @@ private fun monthName(month: Int): String {
         "December",
     )[month - 1]
 }
+
+private val LOCAL_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val LOCAL_DATE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM dd HH:mm")

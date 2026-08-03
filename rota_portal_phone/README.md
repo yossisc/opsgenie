@@ -1,6 +1,8 @@
 # Rota Portal Phone
 
-Internal Kotlin Multiplatform phone client scaffold for Opsgenie-backed rota tooling.
+Internal Kotlin Multiplatform phone client for Opsgenie-backed rota tooling.
+
+The month calendar shows Opsgenie **Final** on-call periods (resolved timeline), matching the desktop portal and Opsgenie UI.
 
 Current modules:
 

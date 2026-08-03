@@ -73,6 +73,52 @@ class OpsgenieClient(
         }
     }
 
+    suspend fun getFinalTimeline(
+        scheduleName: String,
+        rotationName: String,
+        date: String,
+        interval: Int = 1,
+        intervalUnit: String = "months",
+    ): List<OnCallPeriod> {
+        val response = httpClient.get(
+            "${baseUrl.trimEnd('/')}/v2/schedules/${scheduleName.urlPathEncode()}/timeline" +
+                "?identifierType=name&interval=$interval&intervalUnit=$intervalUnit&date=${date.urlPathEncode()}",
+        )
+        if (response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden) {
+            tokenStore.clearToken()
+            throw OpsgenieApiException("Opsgenie rejected the stored token.")
+        }
+        if (!response.status.isSuccess()) {
+            throw OpsgenieApiException("Opsgenie returned HTTP ${response.status.value}.")
+        }
+
+        val rotations = response.body<TimelineResponse>().data?.finalTimeline?.rotations.orEmpty()
+        return rotations
+            .filter { rotation -> rotation.name.isNullOrBlank() || rotation.name == rotationName }
+            .flatMap { rotation ->
+                rotation.periods.orEmpty().mapNotNull { period ->
+                    val start = normalizeIsoZ(period.startDate) ?: return@mapNotNull null
+                    val end = normalizeIsoZ(period.endDate) ?: return@mapNotNull null
+                    val username = period.recipient?.name
+                    val member = if (username.isNullOrBlank()) {
+                        "Unassigned"
+                    } else {
+                        TeamDirectory.memberForUsername(username)
+                    }
+                    val type = period.type ?: "default"
+                    OnCallPeriod(
+                        id = "${start}_${end}_${member}_$type".replace(":", ""),
+                        member = member,
+                        username = username,
+                        start = start,
+                        end = end,
+                        type = type,
+                    )
+                }
+            }
+            .sortedBy { it.start }
+    }
+
     suspend fun createOrUpdateOverride(
         scheduleName: String,
         rotationName: String,
@@ -204,6 +250,50 @@ private data class OverridesResponse(
 )
 
 @Serializable
+private data class TimelineResponse(
+    @SerialName("data")
+    val data: TimelineData? = null,
+)
+
+@Serializable
+private data class TimelineData(
+    @SerialName("finalTimeline")
+    val finalTimeline: FinalTimeline? = null,
+)
+
+@Serializable
+private data class FinalTimeline(
+    @SerialName("rotations")
+    val rotations: List<TimelineRotation>? = null,
+)
+
+@Serializable
+private data class TimelineRotation(
+    @SerialName("name")
+    val name: String? = null,
+    @SerialName("periods")
+    val periods: List<TimelinePeriod>? = null,
+)
+
+@Serializable
+private data class TimelinePeriod(
+    @SerialName("startDate")
+    val startDate: String? = null,
+    @SerialName("endDate")
+    val endDate: String? = null,
+    @SerialName("type")
+    val type: String? = null,
+    @SerialName("recipient")
+    val recipient: TimelineRecipient? = null,
+)
+
+@Serializable
+private data class TimelineRecipient(
+    @SerialName("name")
+    val name: String? = null,
+)
+
+@Serializable
 private data class OverridePayload(
     @SerialName("alias")
     val alias: String? = null,
@@ -311,5 +401,18 @@ private fun String.urlPathEncode(): String {
                 append(char.code.toString(16).uppercase().padStart(2, '0'))
             }
         }
+    }
+}
+
+private fun normalizeIsoZ(value: String?): String? {
+    if (value.isNullOrBlank()) return null
+    val trimmed = value.trim()
+    return when {
+        trimmed.endsWith("Z") -> trimmed.replace(Regex("\\.\\d+Z$"), "Z")
+        trimmed.contains("+") || trimmed.lastIndexOf('-') > 10 -> {
+            // Keep as-is if timezone offset is present; callers compare as ISO strings from API.
+            trimmed
+        }
+        else -> "${trimmed}Z"
     }
 }

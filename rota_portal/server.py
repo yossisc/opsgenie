@@ -255,11 +255,15 @@ class Handler(BaseHTTPRequestHandler):
             start, end = validate_range(body["start"], body["end"])
             suffix = body.get("suffix", "partial" if body.get("partial") else "")
             alias = body.get("alias") or make_alias(start, end, suffix)
-            operation, alias, result = create_or_update_override(OverrideRequest(member_name, username, start, end, alias))
+            operation, alias, result, carved = create_or_update_override(
+                OverrideRequest(member_name, username, start, end, alias),
+                carve=True,
+            )
             json_response(self, HTTPStatus.OK, {
                 "ok": True,
                 "alias": alias,
                 "operation": operation,
+                "carved": carved,
                 "override": {
                     "member": member_name,
                     "username": username,
@@ -290,12 +294,16 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     start, end = validate_range(shift["start"], shift["end"])
                     alias = make_alias(start, end)
-                    operation, alias, result = create_or_update_override(OverrideRequest(member_name, username, start, end, alias))
+                    operation, alias, result, carved = create_or_update_override(
+                        OverrideRequest(member_name, username, start, end, alias),
+                        carve=True,
+                    )
                     results.append({
                         "ok": True,
                         "entryId": shift.get("id", ""),
                         "alias": alias,
                         "operation": operation,
+                        "carved": carved,
                         "override": {
                             "member": member_name,
                             "username": username,

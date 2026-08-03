@@ -2,31 +2,46 @@ package com.glassbox.rotaportal.shared
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 
 class RotaRepository(
     private val config: RotaConfig,
     private val opsgenieClient: OpsgenieClient,
 ) {
     suspend fun loadMonth(year: Int, month: Int): MonthlyRota {
-        val entries = try {
-            RotaSchedule.monthEntries(year, month)
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            throw IllegalStateException("Failed to build rota schedule.", exc)
-        }
-        val overridesResult = try {
-            OverridesResult.Success(
-                withTimeout(OVERRIDE_FETCH_TIMEOUT_MS) {
-                    opsgenieClient.listOverrides(config.scheduleName)
+        val requestDate = LocalDate(year, month, 1)
+            .atStartOfDayIn(TimeZone.UTC)
+            .toString()
+            .replace(Regex("\\.\\d+Z$"), "Z")
+
+        val timelineResult = try {
+            TimelineResult.Success(
+                withTimeout(TIMELINE_FETCH_TIMEOUT_MS) {
+                    opsgenieClient.getFinalTimeline(
+                        scheduleName = config.scheduleName,
+                        rotationName = config.rotationName,
+                        date = requestDate,
+                    )
                 },
             )
         } catch (exc: CancellationException) {
             throw exc
         } catch (exc: Exception) {
-            OverridesResult.Failure(
-                exc.message?.let { "Override sync failed: $it" } ?: "Override sync failed.",
+            TimelineResult.Failure(
+                exc.message?.let { "Timeline sync failed: $it" } ?: "Timeline sync failed.",
             )
+        }
+
+        val periods = when (timelineResult) {
+            is TimelineResult.Success -> filterAndMergeMonth(
+                periods = timelineResult.periods,
+                year = year,
+                month = month,
+            )
+            is TimelineResult.Failure -> emptyList()
         }
 
         return MonthlyRota(
@@ -34,14 +49,10 @@ class RotaRepository(
             rotationName = config.rotationName,
             year = year,
             month = month,
-            entries = entries,
-            overrides = when (overridesResult) {
-                is OverridesResult.Success -> overridesResult.overrides
-                is OverridesResult.Failure -> emptyList()
-            },
+            periods = periods,
             teamMembers = TeamDirectory.memberNames(),
             defaultAssignableMembers = TeamDirectory.defaultAssignableMembers(),
-            overridesError = (overridesResult as? OverridesResult.Failure)?.message,
+            timelineError = (timelineResult as? TimelineResult.Failure)?.message,
         )
     }
 
@@ -66,25 +77,25 @@ class RotaRepository(
         )
     }
 
-    suspend fun overrideShifts(
+    suspend fun overridePeriods(
         member: String,
-        shifts: List<ScheduleEntry>,
+        periods: List<OnCallPeriod>,
     ): BulkOverrideResult {
-        val results = shifts.map { shift ->
+        val results = periods.map { period ->
             try {
                 BulkOverrideItem(
-                    entryId = shift.id,
+                    entryId = period.id,
                     result = overrideShift(
                         member = member,
-                        start = shift.start,
-                        end = shift.end,
+                        start = period.start,
+                        end = period.end,
                         partial = false,
                     ),
                     error = null,
                 )
             } catch (exc: Exception) {
                 BulkOverrideItem(
-                    entryId = shift.id,
+                    entryId = period.id,
                     result = null,
                     error = exc.message ?: "Override failed.",
                 )
@@ -93,13 +104,68 @@ class RotaRepository(
         return BulkOverrideResult(results)
     }
 
-    private sealed interface OverridesResult {
-        data class Success(val overrides: List<OpsgenieOverride>) : OverridesResult
-        data class Failure(val message: String) : OverridesResult
+    private fun filterAndMergeMonth(
+        periods: List<OnCallPeriod>,
+        year: Int,
+        month: Int,
+    ): List<OnCallPeriod> {
+        val startBound = LocalDate(year, month, 1).atStartOfDayIn(TimeZone.UTC)
+        val endBound = if (month == 12) {
+            LocalDate(year + 1, 1, 1).atStartOfDayIn(TimeZone.UTC)
+        } else {
+            LocalDate(year, month + 1, 1).atStartOfDayIn(TimeZone.UTC)
+        }
+
+        val filtered = periods.filter { period ->
+            val start = period.start.toInstantOrNull() ?: return@filter false
+            val end = period.end.toInstantOrNull() ?: return@filter false
+            end > startBound && start < endBound
+        }
+        return mergeContiguousPeriods(filtered)
+    }
+
+    private fun mergeContiguousPeriods(periods: List<OnCallPeriod>): List<OnCallPeriod> {
+        if (periods.isEmpty()) return emptyList()
+        val merged = mutableListOf<OnCallPeriod>()
+        var current = periods.first()
+        for (period in periods.drop(1)) {
+            val samePerson = current.member == period.member && current.username == period.username
+            val contiguous = current.end == period.start
+            if (samePerson && contiguous) {
+                val type = if (current.type == "override" || period.type == "override") {
+                    "override"
+                } else {
+                    current.type
+                }
+                current = current.copy(
+                    end = period.end,
+                    type = type,
+                    id = "${current.start}_${period.end}_${current.member}_$type".replace(":", ""),
+                )
+            } else {
+                merged += current
+                current = period
+            }
+        }
+        merged += current
+        return merged
+    }
+
+    private fun String.toInstantOrNull(): Instant? {
+        return try {
+            Instant.parse(this)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private sealed interface TimelineResult {
+        data class Success(val periods: List<OnCallPeriod>) : TimelineResult
+        data class Failure(val message: String) : TimelineResult
     }
 
     private companion object {
-        const val OVERRIDE_FETCH_TIMEOUT_MS = 30_000L
+        const val TIMELINE_FETCH_TIMEOUT_MS = 30_000L
     }
 }
 

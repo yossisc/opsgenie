@@ -5,9 +5,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.glassbox.rotaportal.shared.BulkOverrideResult
 import com.glassbox.rotaportal.shared.MonthlyRota
+import com.glassbox.rotaportal.shared.OnCallPeriod
 import com.glassbox.rotaportal.shared.OpsgenieClient
 import com.glassbox.rotaportal.shared.RotaRepository
-import com.glassbox.rotaportal.shared.ScheduleEntry
 import com.glassbox.rotaportal.shared.TokenValidationResult
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -128,15 +128,20 @@ class RotaPortalViewModel(
         }
     }
 
-    fun openSingleOverride(entry: ScheduleEntry) {
+    fun openSingleOverride(period: OnCallPeriod) {
+        val defaultMember = if (period.member != "Unassigned") {
+            period.member
+        } else {
+            _uiState.value.rota?.defaultAssignableMembers?.firstOrNull() ?: "Yossi"
+        }
         _uiState.update {
             it.copy(
                 overrideDialog = OverrideDialogState.Single(
-                    entry = entry,
-                    selectedMember = entry.applyMember,
+                    period = period,
+                    selectedMember = defaultMember,
                     partial = false,
-                    start = entry.start,
-                    end = entry.end,
+                    start = period.start,
+                    end = period.end,
                 ),
                 statusMessage = null,
             )
@@ -146,16 +151,20 @@ class RotaPortalViewModel(
     fun openBulkOverride() {
         val state = _uiState.value
         val rota = state.rota ?: return
-        val selectedEntries = rota.entries.filter { it.id in state.selectedShiftIds }
-        if (selectedEntries.isEmpty()) {
-            _uiState.update { it.copy(statusMessage = "Select at least one shift.") }
+        val selectedPeriods = rota.periods.filter { it.id in state.selectedShiftIds }
+        if (selectedPeriods.isEmpty()) {
+            _uiState.update { it.copy(statusMessage = "Select at least one on-call period.") }
             return
         }
+        val defaultMember = selectedPeriods.firstOrNull { it.member != "Unassigned" }?.member
+            ?: selectedPeriods.first().member.takeIf { it != "Unassigned" }
+            ?: rota.defaultAssignableMembers.firstOrNull()
+            ?: "Yossi"
         _uiState.update {
             it.copy(
                 overrideDialog = OverrideDialogState.Bulk(
-                    entries = selectedEntries,
-                    selectedMember = selectedEntries.first().applyMember,
+                    periods = selectedPeriods,
+                    selectedMember = defaultMember,
                 ),
                 statusMessage = null,
             )
@@ -250,7 +259,7 @@ class RotaPortalViewModel(
                     it.copy(
                         rota = rota,
                         rotaLoading = false,
-                        rotaError = rota.overridesError,
+                        rotaError = rota.timelineError,
                         selectedShiftIds = emptySet(),
                         bulkMode = false,
                     )
@@ -278,16 +287,21 @@ class RotaPortalViewModel(
             try {
                 val result = rotaRepository.overrideShift(
                     member = dialog.selectedMember,
-                    start = if (dialog.partial) dialog.start else dialog.entry.start,
-                    end = if (dialog.partial) dialog.end else dialog.entry.end,
+                    start = if (dialog.partial) dialog.start else dialog.period.start,
+                    end = if (dialog.partial) dialog.end else dialog.period.end,
                     partial = dialog.partial,
                 )
-                _uiState.update { state ->
-                    val refreshed = state.rota?.withOverride(result.override)
-                    state.copy(
+                val year = _uiState.value.rota?.year ?: LocalDate.now().year
+                val month = _uiState.value.rota?.month ?: LocalDate.now().monthValue
+                val refreshed = withContext(Dispatchers.IO) {
+                    rotaRepository.loadMonth(year, month)
+                }
+                _uiState.update {
+                    it.copy(
                         rota = refreshed,
                         overrideDialog = null,
                         overrideSubmitting = false,
+                        rotaError = refreshed.timelineError,
                         statusMessage = "Override ${result.operation.name.lowercase()}: ${result.alias}",
                     )
                 }
@@ -306,21 +320,23 @@ class RotaPortalViewModel(
         _uiState.update { it.copy(overrideSubmitting = true, statusMessage = null) }
         viewModelScope.launch {
             try {
-                val result: BulkOverrideResult = rotaRepository.overrideShifts(
+                val result: BulkOverrideResult = rotaRepository.overridePeriods(
                     member = dialog.selectedMember,
-                    shifts = dialog.entries,
+                    periods = dialog.periods,
                 )
-                _uiState.update { state ->
-                    val refreshed = result.items.fold(state.rota) { rota, item ->
-                        val override = item.result?.override
-                        if (rota != null && override != null) rota.withOverride(override) else rota
-                    }
-                    state.copy(
+                val year = _uiState.value.rota?.year ?: LocalDate.now().year
+                val month = _uiState.value.rota?.month ?: LocalDate.now().monthValue
+                val refreshed = withContext(Dispatchers.IO) {
+                    rotaRepository.loadMonth(year, month)
+                }
+                _uiState.update {
+                    it.copy(
                         rota = refreshed,
                         overrideDialog = null,
                         overrideSubmitting = false,
                         bulkMode = false,
                         selectedShiftIds = emptySet(),
+                        rotaError = refreshed.timelineError,
                         statusMessage = "Bulk override finished: ${result.succeeded} succeeded, ${result.failed} failed.",
                     )
                 }
@@ -333,14 +349,6 @@ class RotaPortalViewModel(
                 }
             }
         }
-    }
-
-    private fun MonthlyRota.withOverride(override: com.glassbox.rotaportal.shared.OpsgenieOverride): MonthlyRota {
-        return copy(
-            overrides = overrides
-                .filterNot { it.start == override.start && it.end == override.end }
-                .plus(override),
-        )
     }
 }
 
@@ -388,7 +396,7 @@ sealed interface OverrideDialogState {
     val selectedMember: String
 
     data class Single(
-        val entry: ScheduleEntry,
+        val period: OnCallPeriod,
         override val selectedMember: String,
         val partial: Boolean,
         val start: String,
@@ -396,7 +404,7 @@ sealed interface OverrideDialogState {
     ) : OverrideDialogState
 
     data class Bulk(
-        val entries: List<ScheduleEntry>,
+        val periods: List<OnCallPeriod>,
         override val selectedMember: String,
     ) : OverrideDialogState
 }
