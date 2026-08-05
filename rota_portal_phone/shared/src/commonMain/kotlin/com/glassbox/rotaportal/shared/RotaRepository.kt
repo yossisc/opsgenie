@@ -181,6 +181,7 @@ data class OverrideMutationResult(
     val operation: OverrideOperation,
     val alias: String,
     val override: OpsgenieOverride,
+    val carvedCount: Int = 0,
 )
 
 data class BulkOverrideResult(

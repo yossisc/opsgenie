@@ -128,20 +128,25 @@ class RotaPortalViewModel(
         }
     }
 
-    fun openSingleOverride(period: OnCallPeriod) {
-        val defaultMember = if (period.member != "Unassigned") {
-            period.member
-        } else {
-            _uiState.value.rota?.defaultAssignableMembers?.firstOrNull() ?: "Yossi"
-        }
+    fun openSingleOverride(period: OnCallPeriod, clickedDay: LocalDate? = null) {
+        val assignable = _uiState.value.rota?.defaultAssignableMembers.orEmpty()
+            .ifEmpty { _uiState.value.rota?.teamMembers.orEmpty() }
+        val defaultMember = assignable.firstOrNull { it != period.member }
+            ?: assignable.firstOrNull()
+            ?: if (period.member != "Unassigned") period.member else "Yossi"
+
+        val scoped = clickedDay?.let { dayScopedOverrideRange(period, it) }
+        val spansBeyondDay = scoped != null &&
+            (scoped.first != period.start || scoped.second != period.end)
+
         _uiState.update {
             it.copy(
                 overrideDialog = OverrideDialogState.Single(
                     period = period,
                     selectedMember = defaultMember,
-                    partial = false,
-                    start = period.start,
-                    end = period.end,
+                    partial = spansBeyondDay,
+                    start = scoped?.first ?: period.start,
+                    end = scoped?.second ?: period.end,
                 ),
                 statusMessage = null,
             )
@@ -156,9 +161,10 @@ class RotaPortalViewModel(
             _uiState.update { it.copy(statusMessage = "Select at least one on-call period.") }
             return
         }
-        val defaultMember = selectedPeriods.firstOrNull { it.member != "Unassigned" }?.member
-            ?: selectedPeriods.first().member.takeIf { it != "Unassigned" }
+        val defaultMember = rota.defaultAssignableMembers
+            .firstOrNull { member -> selectedPeriods.none { it.member == member } }
             ?: rota.defaultAssignableMembers.firstOrNull()
+            ?: selectedPeriods.firstOrNull { it.member != "Unassigned" }?.member
             ?: "Yossi"
         _uiState.update {
             it.copy(
@@ -302,7 +308,14 @@ class RotaPortalViewModel(
                         overrideDialog = null,
                         overrideSubmitting = false,
                         rotaError = refreshed.timelineError,
-                        statusMessage = "Override ${result.operation.name.lowercase()}: ${result.alias}",
+                        statusMessage = buildString {
+                            append("Override ${result.operation.name.lowercase()}: ${result.alias}")
+                            if (result.carvedCount > 0) {
+                                append(" (carved ${result.carvedCount} overlapping override")
+                                if (result.carvedCount != 1) append('s')
+                                append(')')
+                            }
+                        },
                     )
                 }
             } catch (exc: Exception) {
@@ -407,4 +420,39 @@ sealed interface OverrideDialogState {
         val periods: List<OnCallPeriod>,
         override val selectedMember: String,
     ) : OverrideDialogState
+}
+
+/** Prefer the 24h handover slice from period.start that overlaps [day] the most. */
+internal fun dayScopedOverrideRange(period: OnCallPeriod, day: LocalDate): Pair<String, String> {
+    val zone = java.time.ZoneId.systemDefault()
+    val periodStart = java.time.Instant.parse(period.start)
+    val periodEnd = java.time.Instant.parse(period.end)
+    val dayStart = day.atStartOfDay(zone).toInstant()
+    val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
+    val dayMs = java.time.Duration.ofDays(1).toMillis()
+
+    var bestStart = periodStart
+    var bestEnd = periodEnd
+    var bestOverlap = -1L
+    var chunkStart = periodStart
+    while (chunkStart.isBefore(periodEnd)) {
+        val chunkEndMs = minOf(chunkStart.toEpochMilli() + dayMs, periodEnd.toEpochMilli())
+        val chunkEnd = java.time.Instant.ofEpochMilli(chunkEndMs)
+        val overlap = minOf(chunkEnd.toEpochMilli(), dayEnd.toEpochMilli()) -
+            maxOf(chunkStart.toEpochMilli(), dayStart.toEpochMilli())
+        if (overlap > bestOverlap) {
+            bestOverlap = overlap
+            bestStart = chunkStart
+            bestEnd = chunkEnd
+        }
+        chunkStart = chunkEnd
+    }
+    if (bestOverlap <= 0L) {
+        bestStart = maxOf(periodStart, dayStart)
+        bestEnd = minOf(periodEnd, dayEnd)
+    }
+    fun isoZ(instant: java.time.Instant): String {
+        return instant.toString().replace(Regex("\\.\\d+Z$"), "Z")
+    }
+    return isoZ(bestStart) to isoZ(bestEnd)
 }

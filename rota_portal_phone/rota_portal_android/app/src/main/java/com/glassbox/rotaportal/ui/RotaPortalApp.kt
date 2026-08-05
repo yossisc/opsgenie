@@ -103,7 +103,7 @@ fun RotaPortalApp(
                     onSetViewMode = viewModel::setViewMode,
                     onSetBulkMode = viewModel::setBulkMode,
                     onToggleShiftSelection = viewModel::toggleShiftSelection,
-                    onOpenSingleOverride = viewModel::openSingleOverride,
+                    onOpenSingleOverride = { period, day -> viewModel.openSingleOverride(period, day) },
                     onOpenBulkOverride = viewModel::openBulkOverride,
                     onUpdateDialogMember = viewModel::updateDialogMember,
                     onUpdateDialogPartial = viewModel::updateDialogPartial,
@@ -241,7 +241,7 @@ private fun RotaScreen(
     onSetViewMode: (RotaViewMode) -> Unit,
     onSetBulkMode: (Boolean) -> Unit,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (OnCallPeriod) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
     onOpenBulkOverride: () -> Unit,
     onUpdateDialogMember: (String) -> Unit,
     onUpdateDialogPartial: (Boolean) -> Unit,
@@ -325,7 +325,7 @@ private fun RotaContent(
     onSetViewMode: (RotaViewMode) -> Unit,
     onSetBulkMode: (Boolean) -> Unit,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (OnCallPeriod) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
     onOpenBulkOverride: () -> Unit,
     onConsumeTodayFocus: () -> Unit,
 ) {
@@ -596,7 +596,7 @@ private fun MonthGrid(
     bulkMode: Boolean,
     gridState: LazyGridState,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (OnCallPeriod) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
 ) {
     val days = remember(rota.year, rota.month) { monthDays(rota.year, rota.month) }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -638,7 +638,7 @@ private fun DayCell(
     selectedShiftIds: Set<String>,
     bulkMode: Boolean,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (OnCallPeriod) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
 ) {
     val periods = rota.periods.filter { it.overlapsLocalDay(day.date) }
     val today = day.date == LocalDate.now()
@@ -675,7 +675,7 @@ private fun DayCell(
                     selected = period.id in selectedShiftIds,
                     bulkMode = bulkMode,
                     onClick = {
-                        if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period)
+                        if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period, day.date)
                     },
                 )
             }
@@ -693,7 +693,7 @@ private fun ShiftList(
     bulkMode: Boolean,
     listState: LazyListState,
     onToggleShiftSelection: (String) -> Unit,
-    onOpenSingleOverride: (OnCallPeriod) -> Unit,
+    onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -706,7 +706,7 @@ private fun ShiftList(
                 selected = period.id in selectedShiftIds,
                 bulkMode = bulkMode,
                 onClick = {
-                    if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period)
+                    if (bulkMode) onToggleShiftSelection(period.id) else onOpenSingleOverride(period, null)
                 },
             )
         }
@@ -972,7 +972,13 @@ private fun clippedLocalRange(period: OnCallPeriod, date: LocalDate): String {
 
 private fun OverrideDialogState.summaryText(): String {
     return when (this) {
-        is OverrideDialogState.Single -> "${period.member} on-call (${typeLabel(period.type)})\n${period.start} to ${period.end}"
+        is OverrideDialogState.Single -> buildString {
+            append("${period.member} on-call (${typeLabel(period.type)})\n")
+            append("Full period: ${period.start} to ${period.end}")
+            if (partial && (start != period.start || end != period.end)) {
+                append("\nSelected day window: $start to $end")
+            }
+        }
         is OverrideDialogState.Bulk -> periods.take(4)
             .joinToString("\n") { "${it.member}: ${it.start} to ${it.end}" }
             .let { text -> if (periods.size > 4) "$text\n...and ${periods.size - 4} more" else text }
