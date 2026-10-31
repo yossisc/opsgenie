@@ -1,0 +1,6 @@
+
+When generating a Git commit message:
+- Write exactly one line, maximum 72 characters.
+- Summarize only the main change.
+- Use imperative wording.
+- Do not include a body, bullet points, or explanations.
