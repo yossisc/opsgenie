@@ -14,7 +14,7 @@ object TeamDirectory {
 
     fun memberNames(): List<String> = members.keys.toList()
 
-    fun defaultAssignableMembers(): List<String> = listOf("Yossi", "Gabi", "Gour", "Nadav", "Dovid")
+    fun defaultAssignableMembers(): List<String> = listOf("Yossi", "Gabi", "Nadav", "Dovid")
 
     fun memberForUsername(username: String?): String {
         return members.entries.firstOrNull { it.value == username }?.key

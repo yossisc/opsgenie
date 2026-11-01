@@ -506,13 +506,5 @@ private fun String.urlPathEncode(): String {
 
 private fun normalizeIsoZ(value: String?): String? {
     if (value.isNullOrBlank()) return null
-    val trimmed = value.trim()
-    return when {
-        trimmed.endsWith("Z") -> trimmed.replace(Regex("\\.\\d+Z$"), "Z")
-        trimmed.contains("+") || trimmed.lastIndexOf('-') > 10 -> {
-            // Keep as-is if timezone offset is present; callers compare as ISO strings from API.
-            trimmed
-        }
-        else -> "${trimmed}Z"
-    }
+    return value.trim().toInstantOrNull()?.toIsoZ()
 }

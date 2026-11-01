@@ -116,11 +116,11 @@ class RotaRepository(
             LocalDate(year, month + 1, 1).atStartOfDayIn(TimeZone.UTC)
         }
 
-        val filtered = periods.filter { period ->
-            val start = period.start.toInstantOrNull() ?: return@filter false
-            val end = period.end.toInstantOrNull() ?: return@filter false
-            end > startBound && start < endBound
-        }
+        val filtered = periods.mapNotNull { period ->
+            val start = period.start.toInstantOrNull() ?: return@mapNotNull null
+            val end = period.end.toInstantOrNull() ?: return@mapNotNull null
+            if (end > startBound && start < endBound) period else null
+        }.sortedBy { it.start.toInstantOrNull() }
         return mergeContiguousPeriods(filtered)
     }
 
@@ -130,7 +130,9 @@ class RotaRepository(
         var current = periods.first()
         for (period in periods.drop(1)) {
             val samePerson = current.member == period.member && current.username == period.username
-            val contiguous = current.end == period.start
+            val currentEnd = current.end.toInstantOrNull()
+            val periodStart = period.start.toInstantOrNull()
+            val contiguous = currentEnd != null && currentEnd == periodStart
             if (samePerson && contiguous) {
                 val type = if (current.type == "override" || period.type == "override") {
                     "override"

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyListState
@@ -61,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -475,12 +477,13 @@ private fun RotaHeader(
             val unassigned = rota.periods.count { it.member == "Unassigned" }
             Text(
                 text = buildString {
-                    append("${monthName(rota.month)} ${rota.year}: ${rota.periods.size} on-call periods")
+                    append("${monthName(rota.month)} ${rota.year}: ${rota.periods.size} on-call periods from Opsgenie Final")
                     if (overrideCount > 0) append(", $overrideCount overrides")
                     if (unassigned > 0) append(", $unassigned unassigned")
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
+            MemberLegend()
         }
         uiState.rotaError?.let { error ->
             Text(
@@ -640,7 +643,9 @@ private fun DayCell(
     onToggleShiftSelection: (String) -> Unit,
     onOpenSingleOverride: (OnCallPeriod, LocalDate?) -> Unit,
 ) {
-    val periods = rota.periods.filter { it.overlapsLocalDay(day.date) }
+    val periods = rota.periods
+        .filter { it.overlapsLocalDay(day.date) }
+        .sortedBy { Instant.parse(it.start) }
     val today = day.date == LocalDate.now()
     Card(
         modifier = Modifier
@@ -776,28 +781,47 @@ private fun ShiftChip(
     bulkMode: Boolean,
     onClick: () -> Unit,
 ) {
-    val label = buildString {
-        if (bulkMode) append(if (selected) "x " else "- ")
-        append(period.member)
-        append(' ')
-        append(clippedLocalRange(period, day))
+    val name = if (bulkMode) {
+        "${if (selected) "x " else "- "}${period.member}"
+    } else {
+        period.member
     }
-    val color = if (selected) MaterialTheme.colorScheme.primary else memberColor(period.member)
-    Text(
-        text = label.take(18),
+    val fill = if (selected) MaterialTheme.colorScheme.primary else memberFill(period.member)
+    val accent = if (selected) Color.White else memberColor(period.member)
+    val titleColor = if (selected) MaterialTheme.colorScheme.onPrimary else Color(0xFF17202A)
+    val timeColor = if (selected) MaterialTheme.colorScheme.onPrimary else Color(0xFF5D6A78)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(color = color, shape = MaterialTheme.shapes.small)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 3.dp),
-        color = Color.White,
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = if (label.length > 10) 8.sp else 10.sp,
-            lineHeight = 10.sp,
-        ),
-        maxLines = 1,
-        softWrap = false,
-    )
+            .background(color = fill, shape = MaterialTheme.shapes.small)
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(vertical = 2.dp)
+                .width(3.dp)
+                .height(26.dp)
+                .background(accent),
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
+        ) {
+            Text(
+                text = name,
+                color = titleColor,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                maxLines = 1,
+            )
+            Text(
+                text = clippedLocalRange(period, day),
+                color = timeColor,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, lineHeight = 9.sp),
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 @Composable
@@ -994,15 +1018,47 @@ private fun typeLabel(type: String): String {
     }
 }
 
+@Composable
+private fun MemberLegend() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf("Nadav", "Dovid", "Yossi", "Gabi", "Unassigned").forEach { member ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 10.dp, height = 10.dp)
+                        .background(memberColor(member), shape = MaterialTheme.shapes.extraSmall),
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(member, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
+    }
+}
+
 private fun memberColor(member: String): Color {
     return when (member) {
         "Nadav" -> Color(0xFFD97706)
         "Dovid" -> Color(0xFF2563EB)
         "Yossi" -> Color(0xFFDC2626)
         "Gabi" -> Color(0xFF7C3AED)
-        "Gour" -> Color(0xFF0F766E)
         "Unassigned" -> Color(0xFF9CA3AF)
-        else -> Color(0xFF64748B)
+        else -> Color(0xFF0F766E)
+    }
+}
+
+private fun memberFill(member: String): Color {
+    return when (member) {
+        "Nadav" -> Color(0xFFFEF3C7)
+        "Dovid" -> Color(0xFFDBEAFE)
+        "Yossi" -> Color(0xFFFEE2E2)
+        "Gabi" -> Color(0xFFEDE9FE)
+        "Unassigned" -> Color(0xFFF3F4F6)
+        else -> Color(0xFFECFDF5)
     }
 }
 
