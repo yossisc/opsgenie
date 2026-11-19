@@ -280,6 +280,20 @@ button:disabled {
   border-left-color: #7c3aed;
 }
 
+.shift.member-eran,
+.swatch.member-eran {
+  background: #ffedd5;
+  border-color: #fdba74;
+  border-left-color: #ea580c;
+}
+
+.shift.member-avraham,
+.swatch.member-avraham {
+  background: #cffafe;
+  border-color: #67e8f9;
+  border-left-color: #0891b2;
+}
+
 .shift.member-unassigned,
 .swatch.member-unassigned {
   background: #f3f4f6;

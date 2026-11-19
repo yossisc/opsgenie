@@ -73,7 +73,7 @@ def get_week_pair(current_date):
 
 
 # All assignable team members (used for cycling in interactive edit)
-all_team_members = ["Yossi", "Gabi", "Nadav", "Dovid"]
+all_team_members = ["Yossi", "Gabi", "Nadav", "Dovid", "Eran", "Avraham"]
 
 
 # Helper function to add a day

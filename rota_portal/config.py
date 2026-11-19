@@ -14,9 +14,10 @@ TEAM_MEMBERS = {
     "Yossi": "yossi.schwartz@glassboxdigital.com",
     "Dovid": "dovid.friedman@glassboxdigital.com",
     "Yaron": "yaron@glassboxdigital.com",
-    "Gour": "gour.hadad@glassboxdigital.com",
     "Nadav": "nadav.kosovsky@glassboxdigital.com",
     "Gabi": "gavriel.matatov@glassboxdigital.com",
+    "Eran": "eran.meiri@glassboxdigital.com",
+    "Avraham": "avraham.aseme@glassboxdigital.com",
 }
 
 EXTRA_MEMBER_SUBSTITUTIONS = {
@@ -25,4 +26,4 @@ EXTRA_MEMBER_SUBSTITUTIONS = {
     "Extra3": "Gabi",
 }
 
-DEFAULT_ASSIGNABLE_MEMBERS = ["Yossi", "Gabi", "Nadav", "Dovid"]
+DEFAULT_ASSIGNABLE_MEMBERS = ["Yossi", "Gabi", "Nadav", "Dovid", "Eran", "Avraham"]

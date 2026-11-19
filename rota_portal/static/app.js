@@ -39,6 +39,8 @@ const MEMBER_COLORS = {
   Gabi: "member-gabi",
   Nadav: "member-nadav",
   Dovid: "member-dovid",
+  Eran: "member-eran",
+  Avraham: "member-avraham",
   Unassigned: "member-unassigned",
 };
 

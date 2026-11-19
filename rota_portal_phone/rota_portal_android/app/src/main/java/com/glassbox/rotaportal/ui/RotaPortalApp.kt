@@ -1026,7 +1026,7 @@ private fun MemberLegend() {
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        listOf("Nadav", "Dovid", "Yossi", "Gabi", "Unassigned").forEach { member ->
+        listOf("Nadav", "Dovid", "Yossi", "Gabi", "Eran", "Avraham", "Unassigned").forEach { member ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -1046,6 +1046,8 @@ private fun memberColor(member: String): Color {
         "Dovid" -> Color(0xFF2563EB)
         "Yossi" -> Color(0xFFDC2626)
         "Gabi" -> Color(0xFF7C3AED)
+        "Eran" -> Color(0xFFEA580C)
+        "Avraham" -> Color(0xFF0891B2)
         "Unassigned" -> Color(0xFF9CA3AF)
         else -> Color(0xFF0F766E)
     }
@@ -1057,6 +1059,8 @@ private fun memberFill(member: String): Color {
         "Dovid" -> Color(0xFFDBEAFE)
         "Yossi" -> Color(0xFFFEE2E2)
         "Gabi" -> Color(0xFFEDE9FE)
+        "Eran" -> Color(0xFFFFEDD5)
+        "Avraham" -> Color(0xFFCFFAFE)
         "Unassigned" -> Color(0xFFF3F4F6)
         else -> Color(0xFFECFDF5)
     }
